@@ -9,6 +9,16 @@ import type { Issue, Fix } from "../lib/sessions/store";
 const defaultTheorem = "证明：任意连续函数在闭区间上取得最大值与最小值。";
 const defaultAssumptions = "- f 在 [a,b] 上连续\n- [a,b] 为闭区间";
 const defaultDraft = "";
+const ROLE_SEQUENCE = [
+  "Prover",
+  "Skeptic",
+  "CounterexampleHunter",
+  "AssumptionAuditor",
+  "Fixer",
+  "NotationGuardian",
+  "Editor",
+  "Formalizer"
+];
 
 export default function HomePage() {
   const [theorem, setTheorem] = useState(defaultTheorem);
@@ -37,6 +47,16 @@ export default function HomePage() {
     }
     return map;
   }, [fixes]);
+
+  const progress = useMemo(() => {
+    const seen = new Set(messages.map((message) => message.role));
+    const completed = ROLE_SEQUENCE.filter((role) => seen.has(role));
+    const nextRole = ROLE_SEQUENCE.find((role) => !seen.has(role)) ?? null;
+    return {
+      completed,
+      nextRole
+    };
+  }, [messages]);
 
   useEffect(() => {
     if (!sessionId) return;
@@ -206,6 +226,23 @@ export default function HomePage() {
         </section>
 
         <section style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+          <div className="card">
+            <h2>Progress</h2>
+            <p className="muted">状态：{status}</p>
+            <ol className="progress-list">
+              {ROLE_SEQUENCE.map((role) => {
+                const isDone = progress.completed.includes(role);
+                const isActive = status === "running" && progress.nextRole === role;
+                const stateLabel = isDone ? "done" : isActive ? "running" : "pending";
+                return (
+                  <li key={role} className={`progress-item ${stateLabel}`}>
+                    <span className="progress-role">{role}</span>
+                    <span className="progress-state">{stateLabel}</span>
+                  </li>
+                );
+              })}
+            </ol>
+          </div>
           <Timeline messages={messages} />
           <IssuesPanel
             issues={issues}

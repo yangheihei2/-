@@ -167,6 +167,46 @@ button:disabled {
   text-align: left;
 }
 
+.progress-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.progress-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  font-size: 14px;
+}
+
+.progress-item.done {
+  background: #ecfdf3;
+  color: var(--success);
+}
+
+.progress-item.running {
+  background: #eff6ff;
+  color: var(--accent);
+}
+
+.progress-item.pending {
+  background: #f8fafc;
+  color: var(--muted);
+}
+
+.progress-state {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
 .muted {
   color: var(--muted);
   font-size: 13px;
