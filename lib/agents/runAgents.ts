@@ -1,4 +1,4 @@
-import { callDeepSeekChat } from "../deepseek/client";
+import { callChat } from "../llm/client";
 import {
   AgentPrompts,
   AgentRole,
@@ -29,32 +29,33 @@ const ROLE_SEQUENCE: AgentRole[] = [
   "Fixer",
   "NotationGuardian",
   "Editor",
+  "ProofChecker",
   "Formalizer"
 ];
 
-function extractJson(text: string) {
-  const start = text.indexOf("{");
-  const end = text.lastIndexOf("}");
-  if (start === -1 || end === -1 || end <= start) {
-    throw new Error("No JSON object found in response");
+function parseModelJson(raw: string) {
+  const trimmed = (raw ?? "").trim();
+  try {
+    return JSON.parse(trimmed);
+  } catch {
+    const start = trimmed.indexOf("{");
+    const end = trimmed.lastIndexOf("}");
+    if (start === -1 || end === -1 || end <= start) {
+      throw new Error("No JSON object found in response");
+    }
+    return JSON.parse(trimmed.slice(start, end + 1));
   }
-  const sliced = text.slice(start, end + 1);
-  return JSON.parse(sliced);
 }
 
 function mergeIssues(existing: Issue[], incoming: Issue[]) {
   const map = new Map(existing.map((issue) => [issue.id, issue]));
-  for (const issue of incoming) {
-    map.set(issue.id, issue);
-  }
+  for (const issue of incoming) map.set(issue.id, issue);
   return Array.from(map.values());
 }
 
 function mergeFixes(existing: Fix[], incoming: Fix[]) {
   const map = new Map(existing.map((fix) => [fix.issueId, fix]));
-  for (const fix of incoming) {
-    map.set(fix.issueId, fix);
-  }
+  for (const fix of incoming) map.set(fix.issueId, fix);
   return Array.from(map.values());
 }
 
@@ -77,6 +78,7 @@ async function runRole(role: AgentRole, state: SessionState) {
     { role: "system" as const, content: AgentPrompts[role] },
     { role: "user" as const, content: JSON.stringify(buildPayload(role, state)) }
   ];
+
   let lastError: Error | null = null;
   let lastOutput = "";
   let retries = 0;
@@ -87,8 +89,9 @@ async function runRole(role: AgentRole, state: SessionState) {
     retries = attempt;
     try {
       let streamContent = "";
-      const { content } = await callDeepSeekChat(
+      const { content } = await callChat(
         {
+          provider: state.config.provider,
           messages: baseMessages,
           model: state.config.model,
           temperature: state.config.temperature,
@@ -99,10 +102,12 @@ async function runRole(role: AgentRole, state: SessionState) {
           streamContent += delta;
         }
       );
+      
 
       const raw = streamContent || content;
       lastOutput = raw;
-      const parsed = extractJson(raw);
+
+      const parsed = parseModelJson(raw);
       const validated = schema.parse(parsed) as Record<string, unknown>;
       const durationMs = Date.now() - start;
       return { data: validated, durationMs, retries };
@@ -126,9 +131,7 @@ function collectIssues(role: AgentRole, data: Record<string, unknown>) {
   const issues: Issue[] = [];
   for (const issue of issuesRaw) {
     const parsed = IssueSchema.safeParse(issue);
-    if (parsed.success) {
-      issues.push(parsed.data);
-    }
+    if (parsed.success) issues.push(parsed.data as Issue);
   }
   return issues.map((issue) => ({ ...issue, sourceRole: issue.sourceRole || role }));
 }
@@ -138,9 +141,7 @@ function collectFixes(data: Record<string, unknown>) {
   const fixes: Fix[] = [];
   for (const fix of fixesRaw) {
     const parsed = FixSchema.safeParse(fix);
-    if (parsed.success) {
-      fixes.push(parsed.data);
-    }
+    if (parsed.success) fixes.push(parsed.data as Fix);
   }
   return fixes;
 }
@@ -162,9 +163,8 @@ function summarize(state: SessionState) {
 
 export async function runSession(sessionId: string): Promise<void> {
   const record = getSessionRecord(sessionId);
-  if (!record || isRunning(sessionId)) {
-    return;
-  }
+  if (!record || isRunning(sessionId)) return;
+
   setRunning(sessionId, true);
   updateSession(sessionId, (state) => ({ ...state, status: "running" }));
 
@@ -174,9 +174,11 @@ export async function runSession(sessionId: string): Promise<void> {
 
     while (round < maxRounds) {
       round += 1;
+
       for (const role of ROLE_SEQUENCE) {
         const current = getSessionRecord(sessionId);
         if (!current) return;
+
         const { data, durationMs, retries } = await runRole(role, current.state);
 
         const message: SessionMessage = {
@@ -232,9 +234,7 @@ export async function runSession(sessionId: string): Promise<void> {
 
       const snapshot = getSessionRecord(sessionId);
       if (!snapshot) return;
-      if (!hasOpenCriticalIssues(snapshot.state)) {
-        break;
-      }
+      if (!hasOpenCriticalIssues(snapshot.state)) break;
     }
 
     updateSession(sessionId, (state) => ({ ...state, status: "done" }));
@@ -248,10 +248,7 @@ export async function runSession(sessionId: string): Promise<void> {
       status: "error",
       errorMessage: (error as Error).message
     }));
-    emitEvent(sessionId, {
-      type: "error",
-      payload: { message: (error as Error).message }
-    });
+    emitEvent(sessionId, { type: "error", payload: { message: (error as Error).message } });
   } finally {
     setRunning(sessionId, false);
   }

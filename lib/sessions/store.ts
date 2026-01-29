@@ -34,12 +34,14 @@ export type SessionState = {
   assumptions: string;
   draftProof: string;
   config: {
+    provider: "deepseek" | "openai" | "doubao";
     model: string;
     temperature: number;
     maxRounds: number;
     maxRetries: number;
     thinkingMode?: boolean;
   };
+  
   messages: SessionMessage[];
   issues: Issue[];
   fixes: Fix[];
