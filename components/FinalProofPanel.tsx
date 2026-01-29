@@ -15,10 +15,44 @@ export default function FinalProofPanel({
   const [copied, setCopied] = useState(false);
   const [copiedLatex, setCopiedLatex] = useState(false);
 
+  const wrapLatexText = (text: string, maxLength: number) => {
+    const words = text.split(/\s+/).filter(Boolean);
+    if (words.length <= 1) return [text];
+    const lines: string[] = [];
+    let current = "";
+    for (const word of words) {
+      const next = current ? `${current} ${word}` : word;
+      if (next.length > maxLength && current) {
+        lines.push(current);
+        current = word;
+      } else {
+        current = next;
+      }
+    }
+    if (current) lines.push(current);
+    return lines;
+  };
+
+  const prepareLatex = (input: string) => {
+    const trimmed = input.trim();
+    if (!trimmed) return "";
+    if (/\\begin\{/.test(trimmed)) {
+      return trimmed;
+    }
+
+    const normalized = trimmed.replace(/\n+/g, " ");
+    const hasLineBreaks = /\\\\/.test(normalized);
+    const lines = hasLineBreaks
+      ? normalized.split(/\\\\/).map((line) => line.trim()).filter(Boolean)
+      : wrapLatexText(normalized, 96);
+    return `\\begin{aligned} ${lines.join(" \\\\ ")} \\end{aligned}`;
+  };
+
   const renderedLatex = useMemo(() => {
     if (!finalProofLatex) return "";
     try {
-      return katex.renderToString(finalProofLatex, {
+      const preparedLatex = prepareLatex(finalProofLatex);
+      return katex.renderToString(preparedLatex, {
         displayMode: true,
         throwOnError: false
       });
@@ -56,11 +90,11 @@ export default function FinalProofPanel({
           dangerouslySetInnerHTML={{ __html: renderedLatex }}
         />
       ) : (
-        <pre>{finalProof || "等待生成最终证明..."}</pre>
+        <pre>{finalProof || "Waiting for the final proof..."}</pre>
       )}
-      <h3>depsTable</h3>
+      <h3>Dependency Table</h3>
       {depsTable.length === 0 ? (
-        <p className="muted">暂无依赖表。</p>
+        <p className="muted">No dependency table yet.</p>
       ) : (
         <table className="table">
           <thead>
