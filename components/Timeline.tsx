@@ -21,7 +21,7 @@ export default function Timeline({ messages }: { messages: TimelineMessage[] }) 
   return (
     <div className="card">
       <h2>Timeline</h2>
-      {sorted.length === 0 && <p className="muted">等待运行日志...</p>}
+      {sorted.length === 0 && <p className="muted">Waiting for run logs...</p>}
       {sorted.map((message, index) => (
         <div className="timeline-item" key={`${message.role}-${index}`}>
           <header>
@@ -29,11 +29,11 @@ export default function Timeline({ messages }: { messages: TimelineMessage[] }) 
             <span className="badge">{new Date(message.createdAt).toLocaleTimeString()}</span>
           </header>
           <p className="muted">
-            {message.metadata?.durationMs ? `耗时 ${message.metadata.durationMs}ms` : ""}
-            {message.metadata?.retries ? ` · 重试 ${message.metadata.retries} 次` : ""}
+            {message.metadata?.durationMs ? `Duration ${message.metadata.durationMs}ms` : ""}
+            {message.metadata?.retries ? ` · Retries ${message.metadata.retries}` : ""}
           </p>
           <details>
-            <summary className="muted">展开 JSON</summary>
+            <summary className="muted">Expand JSON</summary>
             <pre>{JSON.stringify(message.json, null, 2)}</pre>
           </details>
         </div>

@@ -21,7 +21,7 @@ export default function IssuesPanel({
   return (
     <div className="card">
       <h2>Issues</h2>
-      {issues.length === 0 && <p className="muted">暂无漏洞。</p>}
+      {issues.length === 0 && <p className="muted">No issues yet.</p>}
       {issues.map((issue) => (
         <div
           key={issue.id}
