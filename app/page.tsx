@@ -35,6 +35,7 @@ export default function HomePage() {
   const [issues, setIssues] = useState<Issue[]>([]);
   const [fixes, setFixes] = useState<Fix[]>([]);
   const [finalProof, setFinalProof] = useState("");
+  const [finalProofLatex, setFinalProofLatex] = useState("");
   const [depsTable, setDepsTable] = useState<Array<Record<string, unknown>>>([]);
   const [status, setStatus] = useState("idle");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -68,6 +69,9 @@ export default function HomePage() {
       setMessages((prev) => [...prev, payload]);
       if (payload.role === "Editor" && typeof payload.json.finalProof === "string") {
         setFinalProof(payload.json.finalProof as string);
+        if (typeof payload.json.finalProofLatex === "string") {
+          setFinalProofLatex(payload.json.finalProofLatex as string);
+        }
       }
       if (payload.role === "Formalizer" && Array.isArray(payload.json.depsTable)) {
         setDepsTable(payload.json.depsTable as Array<Record<string, unknown>>);
@@ -94,6 +98,9 @@ export default function HomePage() {
       if (payload.finalProof) {
         setFinalProof(payload.finalProof);
       }
+      if (payload.finalProofLatex) {
+        setFinalProofLatex(payload.finalProofLatex);
+      }
       source.close();
     });
 
@@ -115,6 +122,7 @@ export default function HomePage() {
     setIssues([]);
     setFixes([]);
     setFinalProof("");
+    setFinalProofLatex("");
     setDepsTable([]);
     setErrorMessage(null);
     setSelectedIssueId(null);
@@ -266,7 +274,11 @@ export default function HomePage() {
               <pre>{JSON.stringify(fixesByIssue.get(selectedIssueId), null, 2)}</pre>
             </div>
           )}
-          <FinalProofPanel finalProof={finalProof} depsTable={depsTable} />
+          <FinalProofPanel
+            finalProof={finalProof}
+            finalProofLatex={finalProofLatex}
+            depsTable={depsTable}
+          />
         </section>
       </div>
     </main>

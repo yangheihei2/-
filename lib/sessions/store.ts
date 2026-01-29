@@ -44,6 +44,7 @@ export type SessionState = {
   issues: Issue[];
   fixes: Fix[];
   finalProof: string;
+  finalProofLatex?: string;
   depsTable: Array<Record<string, unknown>>;
   status: "idle" | "running" | "done" | "error";
   errorMessage?: string;

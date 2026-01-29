@@ -171,6 +171,7 @@ function summarize(state: SessionState) {
   return {
     status: state.status,
     finalProof: state.finalProof,
+    finalProofLatex: state.finalProofLatex,
     issueCount: state.issues.length,
     fixesCount: state.fixes.length
   };
@@ -233,7 +234,8 @@ export async function runSession(sessionId: string): Promise<void> {
           const parsed = EditorSchema.safeParse(data);
           updateSession(sessionId, (state) => ({
             ...state,
-            finalProof: parsed.success ? parsed.data.finalProof : state.finalProof
+            finalProof: parsed.success ? parsed.data.finalProof : state.finalProof,
+            finalProofLatex: parsed.success ? parsed.data.finalProofLatex : state.finalProofLatex
           }));
         }
 

@@ -66,6 +66,21 @@ button:disabled {
   cursor: not-allowed;
 }
 
+.button-row {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+
+.latex-output {
+  padding: 12px;
+  border-radius: 12px;
+  background: #f8fafc;
+  border: 1px solid var(--border);
+  overflow-x: auto;
+}
+
 .container {
   display: grid;
   grid-template-columns: 1fr 1.2fr;

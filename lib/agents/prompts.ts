@@ -67,6 +67,7 @@ export const NotationGuardianSchema = z.object({
 export const EditorSchema = z.object({
   role: z.literal("Editor"),
   finalProof: z.string(),
+  finalProofLatex: z.string(),
   structure: z.array(z.string()),
   notationMap: z.array(z.object({
     symbol: z.string(),
@@ -150,7 +151,8 @@ export const AgentPrompts: Record<AgentRole, string> = {
   Editor: [
     "You are Editor, producing the final refined proof and structure.",
     baseJsonRule,
-    "Output JSON with fields: role, finalProof, structure, notationMap, assumptionsUsed, openGaps.",
+    "Output JSON with fields: role, finalProof, finalProofLatex, structure, notationMap, assumptionsUsed, openGaps.",
+    "finalProofLatex must be a single LaTeX block suitable for rendering in display math mode. Use \\\\text{...} for prose.",
     "role must be exactly \"Editor\"."
   ].join("\n"),
   Formalizer: [
