@@ -4,10 +4,7 @@ import {
   AgentRole,
   AgentSchemas,
   IssueSchema,
-  FixSchema,
-  FixerSchema,
-  EditorSchema,
-  FormalizerSchema
+  FixSchema
 } from "./prompts";
 import {
   emitEvent,
@@ -103,7 +100,7 @@ async function runRole(role: AgentRole, state: SessionState) {
       const raw = streamContent || content;
       lastOutput = raw;
       const parsed = extractJson(raw);
-      const validated = schema.parse(parsed) as Record<string, unknown>;
+      const validated = schema.parse(parsed);
       const durationMs = Date.now() - start;
       return { data: validated, durationMs, retries };
     } catch (error) {
@@ -204,28 +201,25 @@ export async function runSession(sessionId: string): Promise<void> {
         }
 
         if (role === "Fixer") {
-          const parsed = FixerSchema.safeParse(data);
           const fixes = collectFixes(data as Record<string, unknown>);
           updateSession(sessionId, (state) => ({
             ...state,
             fixes: mergeFixes(state.fixes, fixes),
-            draftProof: parsed.success ? parsed.data.patchedProof : state.draftProof
+            draftProof: typeof data.patchedProof === "string" ? data.patchedProof : state.draftProof
           }));
         }
 
         if (role === "Editor") {
-          const parsed = EditorSchema.safeParse(data);
           updateSession(sessionId, (state) => ({
             ...state,
-            finalProof: parsed.success ? parsed.data.finalProof : state.finalProof
+            finalProof: typeof data.finalProof === "string" ? data.finalProof : state.finalProof
           }));
         }
 
         if (role === "Formalizer") {
-          const parsed = FormalizerSchema.safeParse(data);
           updateSession(sessionId, (state) => ({
             ...state,
-            depsTable: parsed.success ? parsed.data.depsTable : state.depsTable
+            depsTable: Array.isArray(data.depsTable) ? data.depsTable : state.depsTable
           }));
         }
       }
