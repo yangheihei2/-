@@ -39,6 +39,28 @@ npm run dev
 
 打开 `http://localhost:3000`。
 
+## 输入区说明（左侧面板）
+页面左侧是“输入与运行配置”，用于发起一次完整的多代理流程：
+
+- **Theorem**：定理陈述（要证明的结论）。
+- **Assumptions**：假设列表（建议用条目/换行写清楚条件）。
+- **Draft Proof**：可选的草稿证明；留空也能运行。
+- **Model**：模型选择（`deepseek-chat` / `deepseek-reasoner`）。
+- **高级选项**
+  - **maxRounds**：最大轮次；若仍有 critical issues，会继续下一轮（最多到该值）。
+  - **maxRetries**：单角色输出 JSON 不合格时的重试次数。
+  - **temperature**：采样温度，越低越稳定。
+  - **thinkingMode**：是否启用思考模式（作为配置透传）。
+- **Run / Running**：点击 Run 启动；运行中按钮会显示 `Running...` 并禁用，避免重复提交。
+
+## 输出区说明（右侧面板）
+右侧展示运行过程与产出结果，主要包含以下区域：
+
+- **Issues**：聚合所有角色提出的问题清单，展示严重级别、状态与来源字段（如 theorem/assumptions/draftProof）。
+- **Fixer 响应**：逐条列出 Fixer 对 issues 的修复回应，包括状态与修补摘要。
+- **Final Proof**：最终证明文本（含 LaTeX 渲染与复制按钮）。
+- **depsTable**：形式化依赖表，便于检查每一步依赖哪些假设、引理或前置步骤。
+
 ## 角色说明（8 个身份 AI）
 > 角色 prompt 与 schema 都集中在 `lib/agents/prompts.ts`，可直接扩展或调整。
 
