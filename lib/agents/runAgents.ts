@@ -1,3 +1,4 @@
+import { z } from "zod";
 import { callDeepSeekChat } from "../deepseek/client";
 import {
   AgentPrompts,
@@ -33,6 +34,10 @@ const ROLE_SEQUENCE: AgentRole[] = [
 ];
 
 function extractJson(text: string) {
+  const trimmed = text.trim();
+  if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
+    return JSON.parse(trimmed);
+  }
   const start = text.indexOf("{");
   const end = text.lastIndexOf("}");
   if (start === -1 || end === -1 || end <= start) {
@@ -69,6 +74,15 @@ function buildPayload(role: AgentRole, state: SessionState) {
     fixes: state.fixes,
     finalProof: state.finalProof
   };
+}
+
+function formatZodError(error: z.ZodError) {
+  return error.issues.map((issue) => ({
+    path: issue.path,
+    message: issue.message,
+    expected: "expected" in issue ? issue.expected : undefined,
+    received: "received" in issue ? issue.received : undefined
+  }));
 }
 
 async function runRole(role: AgentRole, state: SessionState) {
@@ -108,11 +122,13 @@ async function runRole(role: AgentRole, state: SessionState) {
       return { data: validated, durationMs, retries };
     } catch (error) {
       lastError = error as Error;
+      const zodError = error instanceof z.ZodError ? error : null;
       baseMessages.push({
         role: "user",
         content: JSON.stringify({
           error: "Your previous output was invalid JSON or did not match the schema. Return valid JSON only.",
-          previousOutput: lastOutput || (lastError as Error).message
+          previousOutput: lastOutput || (lastError as Error).message,
+          validationIssues: zodError ? formatZodError(zodError) : []
         })
       });
     }
