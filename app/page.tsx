@@ -243,6 +243,17 @@ export default function HomePage() {
               })}
             </ol>
           </div>
+          <div className="card">
+            <h2>Error</h2>
+            {status !== "error" && !errorMessage ? (
+              <p className="muted">暂无错误信息。</p>
+            ) : (
+              <div className="error-panel">
+                <p className="error-title">运行失败</p>
+                <pre>{errorMessage || "未知错误"}</pre>
+              </div>
+            )}
+          </div>
           <Timeline messages={messages} />
           <IssuesPanel
             issues={issues}

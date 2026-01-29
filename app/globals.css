@@ -207,6 +207,24 @@ button:disabled {
   text-transform: uppercase;
 }
 
+.error-panel {
+  border-radius: 12px;
+  border: 1px solid #fecaca;
+  background: #fef2f2;
+  padding: 12px;
+  color: var(--danger);
+}
+
+.error-panel pre {
+  margin: 8px 0 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.error-title {
+  font-weight: 600;
+}
+
 .muted {
   color: var(--muted);
   font-size: 13px;
