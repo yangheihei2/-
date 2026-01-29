@@ -25,6 +25,7 @@ export async function POST(request: Request) {
     issues: [],
     fixes: [],
     finalProof: "",
+    finalProofLatex: "",
     depsTable: [],
     status: "idle"
   };

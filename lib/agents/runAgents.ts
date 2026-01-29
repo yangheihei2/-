@@ -1,4 +1,9 @@
+<<<<<<< HEAD
 import { callChat } from "../llm/client";
+=======
+import { z } from "zod";
+import { callDeepSeekChat } from "../deepseek/client";
+>>>>>>> c7b6cb2c21623d4dccfecb2c174538a3e85dee6a
 import {
   AgentPrompts,
   AgentRole,
@@ -33,6 +38,7 @@ const ROLE_SEQUENCE: AgentRole[] = [
   "Formalizer"
 ];
 
+<<<<<<< HEAD
 function parseModelJson(raw: string) {
   const trimmed = (raw ?? "").trim();
   try {
@@ -44,6 +50,17 @@ function parseModelJson(raw: string) {
       throw new Error("No JSON object found in response");
     }
     return JSON.parse(trimmed.slice(start, end + 1));
+=======
+function extractJson(text: string) {
+  const trimmed = text.trim();
+  if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
+    return JSON.parse(trimmed);
+  }
+  const start = text.indexOf("{");
+  const end = text.lastIndexOf("}");
+  if (start === -1 || end === -1 || end <= start) {
+    throw new Error("No JSON object found in response");
+>>>>>>> c7b6cb2c21623d4dccfecb2c174538a3e85dee6a
   }
 }
 
@@ -70,6 +87,15 @@ function buildPayload(role: AgentRole, state: SessionState) {
     fixes: state.fixes,
     finalProof: state.finalProof
   };
+}
+
+function formatZodError(error: z.ZodError) {
+  return error.issues.map((issue) => ({
+    path: issue.path,
+    message: issue.message,
+    expected: "expected" in issue ? issue.expected : undefined,
+    received: "received" in issue ? issue.received : undefined
+  }));
 }
 
 async function runRole(role: AgentRole, state: SessionState) {
@@ -113,11 +139,13 @@ async function runRole(role: AgentRole, state: SessionState) {
       return { data: validated, durationMs, retries };
     } catch (error) {
       lastError = error as Error;
+      const zodError = error instanceof z.ZodError ? error : null;
       baseMessages.push({
         role: "user",
         content: JSON.stringify({
           error: "Your previous output was invalid JSON or did not match the schema. Return valid JSON only.",
-          previousOutput: lastOutput || (lastError as Error).message
+          previousOutput: lastOutput || (lastError as Error).message,
+          validationIssues: zodError ? formatZodError(zodError) : []
         })
       });
     }
@@ -156,6 +184,7 @@ function summarize(state: SessionState) {
   return {
     status: state.status,
     finalProof: state.finalProof,
+    finalProofLatex: state.finalProofLatex,
     issueCount: state.issues.length,
     fixesCount: state.fixes.length
   };
@@ -219,7 +248,8 @@ export async function runSession(sessionId: string): Promise<void> {
           const parsed = EditorSchema.safeParse(data);
           updateSession(sessionId, (state) => ({
             ...state,
-            finalProof: parsed.success ? parsed.data.finalProof : state.finalProof
+            finalProof: parsed.success ? parsed.data.finalProof : state.finalProof,
+            finalProofLatex: parsed.success ? parsed.data.finalProofLatex : state.finalProofLatex
           }));
         }
 

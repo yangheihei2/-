@@ -58,7 +58,13 @@ export async function GET(request: Request) {
 
       if (record.state.status === "done") {
         controller.enqueue(
-          encoder.encode(formatSse("done", { status: "done", finalProof: record.state.finalProof }))
+          encoder.encode(
+            formatSse("done", {
+              status: "done",
+              finalProof: record.state.finalProof,
+              finalProofLatex: record.state.finalProofLatex
+            })
+          )
         );
         controller.close();
         return;

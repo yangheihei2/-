@@ -6,8 +6,8 @@ import IssuesPanel from "../components/IssuesPanel";
 import FinalProofPanel from "../components/FinalProofPanel";
 import type { Issue, Fix } from "../lib/sessions/store";
 
-const defaultTheorem = "证明：任意连续函数在闭区间上取得最大值与最小值。";
-const defaultAssumptions = "- f 在 [a,b] 上连续\n- [a,b] 为闭区间";
+const defaultTheorem = "Prove that any continuous function on a closed interval attains a maximum and a minimum.";
+const defaultAssumptions = "- f is continuous on [a,b]\n- [a,b] is a closed interval";
 const defaultDraft = "";
 const ROLE_SEQUENCE = [
   "Prover",
@@ -35,6 +35,7 @@ export default function HomePage() {
   const [issues, setIssues] = useState<Issue[]>([]);
   const [fixes, setFixes] = useState<Fix[]>([]);
   const [finalProof, setFinalProof] = useState("");
+  const [finalProofLatex, setFinalProofLatex] = useState("");
   const [depsTable, setDepsTable] = useState<Array<Record<string, unknown>>>([]);
   const [status, setStatus] = useState("idle");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -68,6 +69,9 @@ export default function HomePage() {
       setMessages((prev) => [...prev, payload]);
       if (payload.role === "Editor" && typeof payload.json.finalProof === "string") {
         setFinalProof(payload.json.finalProof as string);
+        if (typeof payload.json.finalProofLatex === "string") {
+          setFinalProofLatex(payload.json.finalProofLatex as string);
+        }
       }
       if (payload.role === "Formalizer" && Array.isArray(payload.json.depsTable)) {
         setDepsTable(payload.json.depsTable as Array<Record<string, unknown>>);
@@ -94,6 +98,9 @@ export default function HomePage() {
       if (payload.finalProof) {
         setFinalProof(payload.finalProof);
       }
+      if (payload.finalProofLatex) {
+        setFinalProofLatex(payload.finalProofLatex);
+      }
       source.close();
     });
 
@@ -115,6 +122,7 @@ export default function HomePage() {
     setIssues([]);
     setFixes([]);
     setFinalProof("");
+    setFinalProofLatex("");
     setDepsTable([]);
     setErrorMessage(null);
     setSelectedIssueId(null);
@@ -135,11 +143,11 @@ export default function HomePage() {
 
   return (
     <main>
-      <h1>多身份 AI 互审数学证明</h1>
-      <p className="muted">串行多代理 + 深度推理，自动修补证明并输出依赖表。</p>
+      <h1>Multi-Agent AI Proof Review</h1>
+      <p className="muted">Sequential agents with deep reasoning to repair proofs and emit a dependency table.</p>
       <div className="container">
         <section className="card">
-          <h2>输入</h2>
+          <h2>Input</h2>
           <div className="field">
             <label htmlFor="theorem">Theorem</label>
             <textarea
@@ -172,7 +180,7 @@ export default function HomePage() {
             </select>
           </div>
           <div className="field">
-            <label>高级选项</label>
+            <label>Advanced Options</label>
             <div className="meta-row">
               <div>
                 <label htmlFor="rounds">maxRounds</label>
@@ -228,7 +236,7 @@ export default function HomePage() {
         <section style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
           <div className="card">
             <h2>Progress</h2>
-            <p className="muted">状态：{status}</p>
+            <p className="muted">Status: {status}</p>
             <ol className="progress-list">
               {ROLE_SEQUENCE.map((role) => {
                 const isDone = progress.completed.includes(role);
@@ -246,11 +254,11 @@ export default function HomePage() {
           <div className="card">
             <h2>Error</h2>
             {status !== "error" && !errorMessage ? (
-              <p className="muted">暂无错误信息。</p>
+              <p className="muted">No errors yet.</p>
             ) : (
               <div className="error-panel">
-                <p className="error-title">运行失败</p>
-                <pre>{errorMessage || "未知错误"}</pre>
+                <p className="error-title">Run Failed</p>
+                <pre>{errorMessage || "Unknown error"}</pre>
               </div>
             )}
           </div>
@@ -262,11 +270,15 @@ export default function HomePage() {
           />
           {selectedIssueId && fixesByIssue.has(selectedIssueId) && (
             <div className="card">
-              <h3>Fixer 响应</h3>
+              <h3>Fixer Response</h3>
               <pre>{JSON.stringify(fixesByIssue.get(selectedIssueId), null, 2)}</pre>
             </div>
           )}
-          <FinalProofPanel finalProof={finalProof} depsTable={depsTable} />
+          <FinalProofPanel
+            finalProof={finalProof}
+            finalProofLatex={finalProofLatex}
+            depsTable={depsTable}
+          />
         </section>
       </div>
     </main>
