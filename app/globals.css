@@ -80,6 +80,7 @@ button:disabled {
   border: 1px solid var(--border);
   overflow-x: auto;
   word-break: break-word;
+  overflow-wrap: anywhere;
 }
 
 .latex-output .katex,
@@ -87,6 +88,8 @@ button:disabled {
 .latex-output .katex-html {
   white-space: normal;
   word-break: break-word;
+  overflow-wrap: anywhere;
+  max-width: 100%;
 }
 
 .container {
