@@ -8,6 +8,7 @@ import {
   FixerSchema,
   EditorSchema,
   FormalizerSchema
+  FixSchema
 } from "./prompts";
 import {
   emitEvent,
@@ -104,6 +105,7 @@ async function runRole(role: AgentRole, state: SessionState) {
       lastOutput = raw;
       const parsed = extractJson(raw);
       const validated = schema.parse(parsed) as Record<string, unknown>;
+      const validated = schema.parse(parsed);
       const durationMs = Date.now() - start;
       return { data: validated, durationMs, retries };
     } catch (error) {
@@ -210,6 +212,7 @@ export async function runSession(sessionId: string): Promise<void> {
             ...state,
             fixes: mergeFixes(state.fixes, fixes),
             draftProof: parsed.success ? parsed.data.patchedProof : state.draftProof
+            draftProof: typeof data.patchedProof === "string" ? data.patchedProof : state.draftProof
           }));
         }
 
@@ -218,6 +221,9 @@ export async function runSession(sessionId: string): Promise<void> {
           updateSession(sessionId, (state) => ({
             ...state,
             finalProof: parsed.success ? parsed.data.finalProof : state.finalProof
+          updateSession(sessionId, (state) => ({
+            ...state,
+            finalProof: typeof data.finalProof === "string" ? data.finalProof : state.finalProof
           }));
         }
 
@@ -226,6 +232,9 @@ export async function runSession(sessionId: string): Promise<void> {
           updateSession(sessionId, (state) => ({
             ...state,
             depsTable: parsed.success ? parsed.data.depsTable : state.depsTable
+          updateSession(sessionId, (state) => ({
+            ...state,
+            depsTable: Array.isArray(data.depsTable) ? data.depsTable : state.depsTable
           }));
         }
       }
