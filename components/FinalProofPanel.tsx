@@ -48,10 +48,11 @@ export default function FinalProofPanel({
     return `\\begin{aligned} ${lines.join(" \\\\ ")} \\end{aligned}`;
   };
 
+  const preparedLatex = useMemo(() => prepareLatex(finalProofLatex), [finalProofLatex]);
+
   const renderedLatex = useMemo(() => {
-    if (!finalProofLatex) return "";
+    if (!preparedLatex) return "";
     try {
-      const preparedLatex = prepareLatex(finalProofLatex);
       return katex.renderToString(preparedLatex, {
         displayMode: true,
         throwOnError: false
@@ -59,7 +60,7 @@ export default function FinalProofPanel({
     } catch (error) {
       return "";
     }
-  }, [finalProofLatex]);
+  }, [preparedLatex]);
 
   const handleCopy = async () => {
     await navigator.clipboard.writeText(finalProof || "");
@@ -68,7 +69,7 @@ export default function FinalProofPanel({
   };
 
   const handleCopyLatex = async () => {
-    await navigator.clipboard.writeText(finalProofLatex || "");
+    await navigator.clipboard.writeText(preparedLatex || finalProofLatex || "");
     setCopiedLatex(true);
     setTimeout(() => setCopiedLatex(false), 1500);
   };
