@@ -1,9 +1,5 @@
-<<<<<<< HEAD
-import { callChat } from "../llm/client";
-=======
 import { z } from "zod";
 import { callDeepSeekChat } from "../deepseek/client";
->>>>>>> c7b6cb2c21623d4dccfecb2c174538a3e85dee6a
 import {
   AgentPrompts,
   AgentRole,
@@ -38,30 +34,17 @@ const ROLE_SEQUENCE: AgentRole[] = [
   "Formalizer"
 ];
 
-<<<<<<< HEAD
 function parseModelJson(raw: string) {
   const trimmed = (raw ?? "").trim();
-  try {
-    return JSON.parse(trimmed);
-  } catch {
-    const start = trimmed.indexOf("{");
-    const end = trimmed.lastIndexOf("}");
-    if (start === -1 || end === -1 || end <= start) {
-      throw new Error("No JSON object found in response");
-    }
-    return JSON.parse(trimmed.slice(start, end + 1));
-=======
-function extractJson(text: string) {
-  const trimmed = text.trim();
   if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
     return JSON.parse(trimmed);
   }
-  const start = text.indexOf("{");
-  const end = text.lastIndexOf("}");
+  const start = trimmed.indexOf("{");
+  const end = trimmed.lastIndexOf("}");
   if (start === -1 || end === -1 || end <= start) {
     throw new Error("No JSON object found in response");
->>>>>>> c7b6cb2c21623d4dccfecb2c174538a3e85dee6a
   }
+  return JSON.parse(trimmed.slice(start, end + 1));
 }
 
 function mergeIssues(existing: Issue[], incoming: Issue[]) {
@@ -115,9 +98,8 @@ async function runRole(role: AgentRole, state: SessionState) {
     retries = attempt;
     try {
       let streamContent = "";
-      const { content } = await callChat(
+      const { content } = await callDeepSeekChat(
         {
-          provider: state.config.provider,
           messages: baseMessages,
           model: state.config.model,
           temperature: state.config.temperature,

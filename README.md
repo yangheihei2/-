@@ -39,6 +39,25 @@ npm run dev
 
 打开 `http://localhost:3000`。
 
+## Fork 到个人仓库并部署到 Vercel
+
+1. **Fork 本仓库**
+   - 在 GitHub 页面右上角点击 **Fork**，选择你的账号，创建个人仓库副本。
+
+2. **在 Vercel 创建新项目**
+   - 打开 https://vercel.com/new 并登录。
+   - 在 **Import Git Repository** 中选择你刚刚 Fork 的仓库。
+
+3. **配置环境变量**
+   - 在 Vercel 项目配置页进入 **Settings → Environment Variables**。
+   - 添加与你本地一致的变量：
+     - `DEEPSEEK_API_KEY`
+     - `DEEPSEEK_BASE_URL`（如 `https://api.deepseek.com` 或 `https://api.deepseek.com/v1`）
+
+4. **部署**
+   - 点击 **Deploy**，等待构建完成即可。
+   - 之后每次推送到 `main`（或 Vercel 绑定的分支）都会自动触发部署。
+
 ## 输入区说明（左侧面板）
 页面左侧是“输入与运行配置”，用于发起一次完整的多代理流程：
 
