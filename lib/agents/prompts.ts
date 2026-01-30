@@ -171,15 +171,10 @@ export const AgentPrompts: Record<AgentRole, string> = {
   Editor: [
     "You are Editor, producing the final refined proof and structure.",
     baseJsonRule,
-<<<<<<< HEAD
-    "Output JSON with fields: role, finalProof, structure, notationMap, assumptionsUsed, openGaps.",
-    "IMPORTANT: finalProof should be structured as steps and each step should start with 'Step k:' (k=1,2,3,...) so other agents can reference locations like 'Step 3'.",
-    'role must be exactly "Editor".'
-=======
     "Output JSON with fields: role, finalProof, finalProofLatex, structure, notationMap, assumptionsUsed, openGaps.",
     "finalProofLatex must be a single LaTeX block suitable for rendering in display math mode. Use \\\\text{...} for prose.",
-    "role must be exactly \"Editor\"."
->>>>>>> c7b6cb2c21623d4dccfecb2c174538a3e85dee6a
+    "IMPORTANT: finalProof should be structured as steps and each step should start with 'Step k:' (k=1,2,3,...) so other agents can reference locations like 'Step 3'.",
+    'role must be exactly "Editor".'
   ].join("\n"),
 
   ProofChecker: [
@@ -199,4 +194,3 @@ export const AgentPrompts: Record<AgentRole, string> = {
     'role must be exactly "Formalizer".'
   ].join("\n")
 };
-
