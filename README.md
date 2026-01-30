@@ -58,6 +58,35 @@ npm run dev
    - 点击 **Deploy**，等待构建完成即可。
    - 之后每次推送到 `main`（或 Vercel 绑定的分支）都会自动触发部署。
 
+## 如何提交 Pull Request
+
+1. **Fork 仓库并克隆到本地**
+   ```bash
+   git clone https://github.com/<your-username>/<repo>.git
+   cd <repo>
+   ```
+
+2. **创建分支**
+   ```bash
+   git checkout -b feat/your-change
+   ```
+
+3. **修改代码并运行检查**
+   - 根据需要更新代码或文档。
+   - 可选：运行本地检查或测试（例如 `npm run lint` / `npm test`）。
+
+4. **提交变更并推送**
+   ```bash
+   git add .
+   git commit -m "feat: describe your change"
+   git push origin feat/your-change
+   ```
+
+5. **在 GitHub 创建 PR**
+   - 打开你的 fork 仓库页面，点击 **Compare & pull request**。
+   - 填写标题与说明（包含变更原因、影响范围、测试结果）。
+   - 提交 PR 并等待维护者反馈。
+
 ## 输入区说明（左侧面板）
 页面左侧是“输入与运行配置”，用于发起一次完整的多代理流程：
 
