@@ -15,6 +15,7 @@ export async function POST(request: Request) {
     assumptions: assumptions ?? "",
     draftProof: draftProof ?? "",
     config: {
+      provider: config?.provider ?? "deepseek",
       model: config?.model ?? "deepseek-chat",
       temperature: config?.temperature ?? 0.2,
       maxRounds: config?.maxRounds ?? 1,
