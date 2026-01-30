@@ -15,15 +15,17 @@ function formatSse(event: string, data: unknown) {
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const sessionId = searchParams.get("sessionId");
-  if (!sessionId) {
-    return new Response("Missing sessionId", { status: 400 });
-  }
+  if (!sessionId) return new Response("Missing sessionId", { status: 400 });
 
-  const record = getSessionRecord(sessionId);
+  // ✅ Avoid race: run can be created right before stream connects
+  let record = getSessionRecord(sessionId);
   if (!record) {
-    return new Response("Session not found", { status: 404 });
+    await new Promise((r) => setTimeout(r, 150));
+    record = getSessionRecord(sessionId);
   }
+  if (!record) return new Response("Session not found", { status: 404 });
 
+  // ✅ If not running yet, start it
   if (!isRunning(sessionId) && record.state.status === "idle") {
     void runSession(sessionId);
   }
@@ -35,49 +37,45 @@ export async function GET(request: Request) {
       const send = (event: StreamEvent) => {
         if (event.type === "message") {
           controller.enqueue(encoder.encode(formatSse("message", event.payload)));
-        }
-        if (event.type === "issue") {
+        } else if (event.type === "issue") {
           controller.enqueue(encoder.encode(formatSse("issue", event.payload)));
-        }
-        if (event.type === "done") {
+        } else if (event.type === "done") {
           controller.enqueue(encoder.encode(formatSse("done", event.payload)));
           controller.close();
-        }
-        if (event.type === "error") {
+        } else if (event.type === "error") {
           controller.enqueue(encoder.encode(formatSse("error", event.payload)));
           controller.close();
         }
       };
 
-      for (const message of record.state.messages) {
+      // ✅ Replay existing messages/issues (in case user refreshes)
+      for (const message of record!.state.messages) {
         controller.enqueue(encoder.encode(formatSse("message", message)));
       }
-      for (const issue of record.state.issues) {
+      for (const issue of record!.state.issues) {
         controller.enqueue(encoder.encode(formatSse("issue", issue)));
       }
 
-      if (record.state.status === "done") {
+      // ✅ If already done, return immediately
+      if (record!.state.status === "done") {
         controller.enqueue(
           encoder.encode(
-            formatSse("done", {
-              status: "done",
-              finalProof: record.state.finalProof,
-              finalProofLatex: record.state.finalProofLatex
-            })
+            formatSse("done", { status: "done", finalProof: record!.state.finalProof })
           )
         );
         controller.close();
         return;
       }
 
+      // ✅ Subscribe live events
       const unsubscribe = addListener(sessionId, send);
+
+      // Optional: a connected event (front-end can ignore)
       controller.enqueue(encoder.encode(formatSse("connected", { sessionId })));
 
-      const close = () => {
+      request.signal.addEventListener("abort", () => {
         unsubscribe();
-      };
-
-      request.signal.addEventListener("abort", close);
+      });
     }
   });
 
