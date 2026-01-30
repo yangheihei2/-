@@ -1,15 +1,47 @@
 import { z } from "zod";
 
-export const IssueSchema = z.object({
-  id: z.string().min(1),
-  sourceRole: z.string().min(1).optional(), // 更稳：允许缺失，runAgents 会补
-  severity: z.enum(["critical", "major", "minor"]),
-  claim: z.string(),
-  location: z.string(),
-  why_wrong: z.string(),
-  fix_hint: z.string(),
-  status: z.enum(["open", "resolved", "needs_assumption", "invalid"])
-});
+/** Map model severities to strict enum */
+const SeveritySchema = z
+  .enum(["critical", "major", "minor", "high", "medium", "low"])
+  .transform((s) => {
+    if (s === "high") return "critical" as const;
+    if (s === "medium") return "major" as const;
+    if (s === "low") return "minor" as const;
+    return s;
+  });
+
+  export const IssueSchema = z.preprocess((val) => {
+    const obj = (val ?? {}) as any;
+  
+    // normalize severity if present
+    const sev = String(obj.severity ?? "").toLowerCase();
+    const severity =
+      sev === "high" ? "critical"
+      : sev === "medium" ? "major"
+      : sev === "low" ? "minor"
+      : (obj.severity ?? "major");
+  
+    return {
+      id: obj.id ?? "unknown_issue",
+      sourceRole: obj.sourceRole ?? "Unknown",
+      severity,
+      claim: obj.claim ?? obj.problem ?? obj.issue ?? "",
+      location: obj.location ?? "Global",
+      why_wrong: obj.why_wrong ?? obj.whyWrong ?? obj.rationale ?? "",
+      fix_hint: obj.fix_hint ?? obj.fixHint ?? obj.suggestion ?? "",
+      status: obj.status ?? "open"
+    };
+  }, z.object({
+    id: z.string().min(1),
+    sourceRole: z.string().min(1),
+    severity: z.enum(["critical", "major", "minor"]),
+    claim: z.string(),        // now guaranteed to exist (maybe empty)
+    location: z.string(),
+    why_wrong: z.string(),
+    fix_hint: z.string(),
+    status: z.enum(["open", "resolved", "needs_assumption", "invalid"])
+  }));
+  
 
 export const FixSchema = z.object({
   issueId: z.string().min(1),
@@ -66,20 +98,38 @@ export const NotationGuardianSchema = z.object({
   issues: z.array(IssueSchema)
 });
 
+const StringArray = z.preprocess((v) => {
+  if (Array.isArray(v)) return v;
+  if (typeof v === "string") {
+    const s = v.trim();
+    if (!s) return [];
+    // split by newlines or bullets
+    return s
+      .split(/\r?\n|•|- |\* /)
+      .map((x) => x.trim())
+      .filter(Boolean);
+  }
+  return [];
+}, z.array(z.string()));
+
+const NotationArray = z.preprocess((v) => {
+  if (Array.isArray(v)) return v;
+  if (typeof v === "string") {
+    // if model returned a string, we can’t reliably parse pairs; return empty list
+    return [];
+  }
+  return [];
+}, z.array(z.object({ symbol: z.string(), meaning: z.string() })));
+
 export const EditorSchema = z.object({
   role: z.literal("Editor"),
   finalProof: z.string(),
-  finalProofLatex: z.string(),
-  structure: z.array(z.string()),
-  notationMap: z.array(
-    z.object({
-      symbol: z.string(),
-      meaning: z.string()
-    })
-  ),
-  assumptionsUsed: z.array(z.string()),
-  openGaps: z.array(z.string())
+  structure: StringArray,          // ✅ tolerate string -> array
+  notationMap: NotationArray,      // ✅ tolerate string -> []
+  assumptionsUsed: StringArray,    // ✅ also tolerate string
+  openGaps: StringArray            // ✅ also tolerate string
 });
+
 
 export const ProofCheckerSchema = z.object({
   role: z.literal("ProofChecker"),
@@ -117,80 +167,92 @@ export const AgentSchemas = {
 export type AgentRole = keyof typeof AgentSchemas;
 
 const baseJsonRule =
-  "You must output ONLY a single JSON object that can be parsed by JSON.parse. Do not include Markdown, backticks, or commentary. All fields must be present. Use empty arrays or empty strings when needed.";
+  "Output ONLY one JSON object parseable by JSON.parse. No markdown, no backticks, no extra text. All fields must be present. Use empty arrays/strings when needed.";
+
+const issueRule = [
+  "For issues:",
+  "- severity MUST be one of: critical, major, minor (avoid high/medium/low if possible).",
+  "- sourceRole MUST be your role name exactly.",
+  "- location MUST be either 'Global' or 'Step k' (k is an integer).",
+  "- status is usually 'open' unless you are explicitly resolving it."
+].join("\n");
 
 export const AgentPrompts: Record<AgentRole, string> = {
   Prover: [
     "You are Prover, an expert at structuring mathematical proofs.",
     baseJsonRule,
-    "Output JSON with fields: role, proofStrategySummary, outlineSteps, keyLemmas, assumptionsUsed, missingAssumptions, questionsToUser.",
+    "Return JSON fields: role, proofStrategySummary, outlineSteps, keyLemmas, assumptionsUsed, missingAssumptions, questionsToUser.",
+    "Keep it concise: outlineSteps max 6 items, keyLemmas max 6 items, questionsToUser max 2 items.",
     'role must be exactly "Prover".'
   ].join("\n"),
 
   Skeptic: [
     "You are Skeptic, aggressively searching for logical gaps.",
     baseJsonRule,
-    "Output JSON with fields: role, overallAssessment, criticalQuestions, issues.",
-    "issues must use the Issue schema with id, sourceRole, severity, claim, location, why_wrong, fix_hint, status.",
+    "Return JSON fields: role, overallAssessment, criticalQuestions, issues.",
+    "issues must follow the Issue schema.",
+    issueRule,
     'role must be exactly "Skeptic".'
   ].join("\n"),
 
   CounterexampleHunter: [
     "You are CounterexampleHunter, trying to construct counterexamples or missing assumptions.",
     baseJsonRule,
-    "Output JSON with fields: role, issues, candidateCounterexamples.",
+    "Return JSON fields: role, issues, candidateCounterexamples.",
     "issues must follow the Issue schema.",
+    issueRule,
     'role must be exactly "CounterexampleHunter".'
   ].join("\n"),
 
   AssumptionAuditor: [
-    "You are AssumptionAuditor, checking whether assumptions are sufficient, minimal, or implicit.",
+    "You are AssumptionAuditor, checking whether assumptions are sufficient/minimal/implicit.",
     baseJsonRule,
-    "Output JSON with fields: role, issues, suggestedAssumptions, minimalityNotes.",
+    "Return JSON fields: role, issues, suggestedAssumptions, minimalityNotes.",
     "issues must follow the Issue schema.",
+    issueRule,
     'role must be exactly "AssumptionAuditor".'
   ].join("\n"),
 
   Fixer: [
-    "You are Fixer, responding to each open issue with a concrete patch.",
+    "You are Fixer, patching the proof to address open issues.",
     baseJsonRule,
-    "Output JSON with fields: role, fixes, patchedProof, stillOpenIssueIds.",
-    "fixes must use the Fix schema.",
+    "Return JSON fields: role, fixes, patchedProof, stillOpenIssueIds.",
+    "fixes must follow the Fix schema.",
     'role must be exactly "Fixer".'
   ].join("\n"),
 
   NotationGuardian: [
     "You are NotationGuardian, ensuring notation is consistent and unambiguous.",
     baseJsonRule,
-    "Output JSON with fields: role, notationMap, issues.",
-    "notationMap should be a list of {symbol, meaning}.",
+    "Return JSON fields: role, notationMap, issues.",
+    "notationMap is a list of {symbol, meaning}.",
     "issues must follow the Issue schema.",
+    issueRule,
     'role must be exactly "NotationGuardian".'
   ].join("\n"),
 
   Editor: [
-    "You are Editor, producing the final refined proof and structure.",
+    "You are Editor, producing the final polished proof.",
     baseJsonRule,
-    "Output JSON with fields: role, finalProof, finalProofLatex, structure, notationMap, assumptionsUsed, openGaps.",
-    "finalProofLatex must be a single LaTeX block suitable for rendering in display math mode. Use \\\\text{...} for prose.",
-    "IMPORTANT: finalProof should be structured as steps and each step should start with 'Step k:' (k=1,2,3,...) so other agents can reference locations like 'Step 3'.",
+    "Return JSON fields: role, finalProof, structure, notationMap, assumptionsUsed, openGaps.",
+    "IMPORTANT: finalProof MUST be step-structured; each step starts with 'Step k:' (k=1,2,3...).",
     'role must be exactly "Editor".'
   ].join("\n"),
 
   ProofChecker: [
-    "You are ProofChecker, a strict verifier of mathematical proofs. Your job is to find step-level gaps and invalid inferences.",
+    "You are ProofChecker, a strict verifier of the proof. Find step-level gaps and invalid inferences.",
     baseJsonRule,
-    "Output JSON with fields: role, issues, stepChecks.",
+    "Return JSON fields: role, issues, stepChecks.",
     "issues must follow the Issue schema.",
-    "Each issue.location MUST be either 'Step k' or 'Global'. Prefer 'Step k' whenever possible.",
-    "stepChecks is a list of short notes like 'Step 2: justification missing for ...'.",
+    issueRule,
+    "stepChecks is a list of short notes like 'Step 2: missing justification for ...'.",
     'role must be exactly "ProofChecker".'
   ].join("\n"),
 
   Formalizer: [
     "You are Formalizer, extracting a dependency table and formalization risks.",
     baseJsonRule,
-    "Output JSON with fields: role, depsTable, checkPoints, formalizationRisks, unprovenClaims.",
+    "Return JSON fields: role, depsTable, checkPoints, formalizationRisks, unprovenClaims.",
     'role must be exactly "Formalizer".'
   ].join("\n")
 };

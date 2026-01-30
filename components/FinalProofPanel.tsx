@@ -1,123 +1,97 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import katex from "katex";
+import { useState } from "react";
 
 export default function FinalProofPanel({
   finalProof,
-  finalProofLatex,
-  depsTable
+  depsTable,
+  highlight
 }: {
   finalProof: string;
-  finalProofLatex: string;
   depsTable: Array<Record<string, unknown>>;
+  highlight?: string | null;
 }) {
   const [copied, setCopied] = useState(false);
-  const [copiedLatex, setCopiedLatex] = useState(false);
-
-  const wrapLatexText = (text: string, maxLength: number) => {
-    const words = text.split(/\s+/).filter(Boolean);
-    if (words.length <= 1) return [text];
-    const lines: string[] = [];
-    let current = "";
-    for (const word of words) {
-      const next = current ? `${current} ${word}` : word;
-      if (next.length > maxLength && current) {
-        lines.push(current);
-        current = word;
-      } else {
-        current = next;
-      }
-    }
-    if (current) lines.push(current);
-    return lines;
-  };
-
-  const prepareLatex = (input: string) => {
-    const trimmed = input.trim();
-    if (!trimmed) return "";
-    if (/\\begin\{/.test(trimmed)) {
-      return trimmed;
-    }
-
-    const normalized = trimmed.replace(/\n+/g, " ");
-    const hasLineBreaks = /\\\\/.test(normalized);
-    const lines = hasLineBreaks
-      ? normalized.split(/\\\\/).map((line) => line.trim()).filter(Boolean)
-      : wrapLatexText(normalized, 96);
-    return `\\begin{aligned} ${lines.join(" \\\\ ")} \\end{aligned}`;
-  };
-
-  const preparedLatex = useMemo(() => prepareLatex(finalProofLatex), [finalProofLatex]);
-
-  const renderedLatex = useMemo(() => {
-    if (!preparedLatex) return "";
-    try {
-      return katex.renderToString(preparedLatex, {
-        displayMode: true,
-        throwOnError: false
-      });
-    } catch (error) {
-      return "";
-    }
-  }, [preparedLatex]);
 
   const handleCopy = async () => {
     await navigator.clipboard.writeText(finalProof || "");
     setCopied(true);
-    setTimeout(() => setCopied(false), 1500);
-  };
-
-  const handleCopyLatex = async () => {
-    await navigator.clipboard.writeText(preparedLatex || finalProofLatex || "");
-    setCopiedLatex(true);
-    setTimeout(() => setCopiedLatex(false), 1500);
+    setTimeout(() => setCopied(false), 1200);
   };
 
   return (
     <div className="card">
-      <h2>Final Proof</h2>
-      <div className="button-row">
-        <button type="button" onClick={handleCopy} disabled={!finalProof}>
-          {copied ? "Copied" : "Copy Text"}
-        </button>
-        <button type="button" onClick={handleCopyLatex} disabled={!finalProofLatex}>
-          {copiedLatex ? "Copied" : "Copy LaTeX"}
-        </button>
+      <div className="cardHeader">
+        <div className="cardTitleRow">
+          <h2>Final Proof</h2>
+          <div className="hint">
+            Polished proof after multi-agent review and repair.
+          </div>
+        </div>
+        {highlight ? (
+          <span className="badge">Focused: {highlight}</span>
+        ) : (
+          <span className="badge">Result</span>
+        )}
       </div>
-      {renderedLatex ? (
-        <div
-          className="latex-output"
-          dangerouslySetInnerHTML={{ __html: renderedLatex }}
-        />
-      ) : (
-        <pre>{finalProof || "Waiting for the final proof..."}</pre>
-      )}
-      <h3>Dependency Table</h3>
-      {depsTable.length === 0 ? (
-        <p className="muted">No dependency table yet.</p>
-      ) : (
-        <table className="table">
-          <thead>
-            <tr>
-              <th>step</th>
-              <th>dependsOnAssumptions</th>
-              <th>dependsOnLemmas</th>
-              <th>dependsOnSteps</th>
-            </tr>
-          </thead>
-          <tbody>
-            {depsTable.map((row, index) => (
-              <tr key={`row-${index}`}>
-                <td>{String(row.step ?? "")}</td>
-                <td>{Array.isArray(row.dependsOnAssumptions) ? row.dependsOnAssumptions.join(", ") : ""}</td>
-                <td>{Array.isArray(row.dependsOnLemmas) ? row.dependsOnLemmas.join(", ") : ""}</td>
-                <td>{Array.isArray(row.dependsOnSteps) ? row.dependsOnSteps.join(", ") : ""}</td>
+
+      <button
+        className="btnSmall"
+        onClick={handleCopy}
+        disabled={!finalProof}
+        style={{ marginBottom: 10 }}
+      >
+        {copied ? "Copied" : "Copy proof"}
+      </button>
+
+      <pre className="proof-pre">
+        {finalProof || "Final proof has not been generated yet."}
+      </pre>
+
+      <details style={{ marginTop: 14 }}>
+        <summary className="muted">
+          Dependency Table (click to expand)
+        </summary>
+
+        {depsTable.length === 0 ? (
+          <p className="muted" style={{ marginTop: 8 }}>
+            No dependency information available.
+          </p>
+        ) : (
+          <table className="table" style={{ marginTop: 8 }}>
+            <thead>
+              <tr>
+                <th>Step</th>
+                <th>Depends on assumptions</th>
+                <th>Depends on lemmas</th>
+                <th>Depends on steps</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
+            </thead>
+            <tbody>
+              {depsTable.map((row, i) => (
+                <tr key={i}>
+                  <td>{String(row.step ?? "")}</td>
+                  <td>
+                    {Array.isArray(row.dependsOnAssumptions)
+                      ? row.dependsOnAssumptions.join(", ")
+                      : ""}
+                  </td>
+                  <td>
+                    {Array.isArray(row.dependsOnLemmas)
+                      ? row.dependsOnLemmas.join(", ")
+                      : ""}
+                  </td>
+                  <td>
+                    {Array.isArray(row.dependsOnSteps)
+                      ? row.dependsOnSteps.join(", ")
+                      : ""}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </details>
     </div>
   );
 }

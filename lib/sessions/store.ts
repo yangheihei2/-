@@ -66,7 +66,16 @@ type SessionRecord = {
   running: boolean;
 };
 
-const sessions = new Map<string, SessionRecord>();
+declare global {
+  // eslint-disable-next-line no-var
+  var __SESSIONS_STORE__: Map<string, SessionRecord> | undefined;
+}
+
+const sessions: Map<string, SessionRecord> =
+  globalThis.__SESSIONS_STORE__ ?? new Map<string, SessionRecord>();
+
+globalThis.__SESSIONS_STORE__ = sessions;
+
 
 export function createSession(state: SessionState) {
   sessions.set(state.id, {
