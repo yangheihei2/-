@@ -58,7 +58,7 @@ npm run dev
    - 点击 **Deploy**，等待构建完成即可。
    - 之后每次推送到 `main`（或 Vercel 绑定的分支）都会自动触发部署。
 
-## 如何提交 Pull Request（傻瓜式步骤）
+## 如何提交 Pull Request
 
 1. **进入 GitHub 页面**：打开本项目的 GitHub 页面，点击右上角 **Fork**，把仓库复制到你自己的账号下。
 2. **打开你的 Fork 仓库**：在你账号里找到刚刚 Fork 的仓库，点进去。
