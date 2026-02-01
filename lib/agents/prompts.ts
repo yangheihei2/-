@@ -138,15 +138,28 @@ export const ProofCheckerSchema = z.object({
   stepChecks: z.array(z.string())
 });
 
+const DepsTableRowSchema = z.preprocess((val) => {
+  const obj = (val ?? {}) as any;
+  return {
+    step: obj.step ?? "",
+    dependsOnAssumptions: Array.isArray(obj.dependsOnAssumptions)
+      ? obj.dependsOnAssumptions
+      : [],
+    dependsOnLemmas: Array.isArray(obj.dependsOnLemmas) ? obj.dependsOnLemmas : [],
+    dependsOnSteps: Array.isArray(obj.dependsOnSteps) ? obj.dependsOnSteps : []
+  };
+}, z.object({
+  step: z.string(),
+  dependsOnAssumptions: z.array(z.string()),
+  dependsOnLemmas: z.array(z.string()),
+  dependsOnSteps: z.array(z.string())
+}));
+
 export const FormalizerSchema = z.object({
   role: z.literal("Formalizer"),
-  depsTable: z.array(
-    z.object({
-      step: z.string(),
-      dependsOnAssumptions: z.array(z.string()),
-      dependsOnLemmas: z.array(z.string()),
-      dependsOnSteps: z.array(z.string())
-    })
+  depsTable: z.preprocess(
+    (v) => (Array.isArray(v) ? v : []),
+    z.array(DepsTableRowSchema)
   ),
   checkPoints: z.array(z.string()),
   formalizationRisks: z.array(z.string()),

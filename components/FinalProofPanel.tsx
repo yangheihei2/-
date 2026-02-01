@@ -25,10 +25,40 @@ export default function FinalProofPanel({
 
   const renderedLatex = useMemo(() => {
     if (!finalProofLatex) return "";
-    return katex.renderToString(finalProofLatex, {
-      displayMode: true,
-      throwOnError: false
-    });
+    const escapeHtml = (value: string) =>
+      value
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;");
+
+    const renderText = (value: string) => {
+      let text = escapeHtml(value);
+      text = text.replace(/\\textbf\{([^}]*)\}/g, "<strong>$1</strong>");
+      text = text.replace(/\\textit\{([^}]*)\}/g, "<em>$1</em>");
+      text = text.replace(/\\\\/g, "<br />");
+      text = text.replace(/\r?\n/g, "<br />");
+      return text;
+    };
+
+    const renderMath = (value: string, displayMode: boolean) =>
+      katex.renderToString(value, { displayMode, throwOnError: false });
+
+    const regex = /\$\$([\s\S]+?)\$\$|\$([^$]+?)\$/g;
+    let html = "";
+    let lastIndex = 0;
+    let match: RegExpExecArray | null;
+    while ((match = regex.exec(finalProofLatex)) !== null) {
+      const [fullMatch, displayMath, inlineMath] = match;
+      html += renderText(finalProofLatex.slice(lastIndex, match.index));
+      if (displayMath) {
+        html += renderMath(displayMath, true);
+      } else if (inlineMath) {
+        html += renderMath(inlineMath, false);
+      }
+      lastIndex = match.index + fullMatch.length;
+    }
+    html += renderText(finalProofLatex.slice(lastIndex));
+    return html;
   }, [finalProofLatex]);
 
   return (
