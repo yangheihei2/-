@@ -70,7 +70,10 @@ export const SkepticSchema = z.object({
 export const CounterexampleSchema = z.object({
   role: z.literal("CounterexampleHunter"),
   issues: z.array(IssueSchema),
-  candidateCounterexamples: z.array(z.string())
+  candidateCounterexamples: z.preprocess(
+    (v) => (Array.isArray(v) ? v.map((item) => String(item)) : []),
+    z.array(z.string())
+  )
 });
 
 export const NotationGuardianSchema = z.object({
