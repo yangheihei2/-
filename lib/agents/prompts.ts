@@ -213,9 +213,18 @@ export const FormalizerSchema = z.object({
     (v) => (Array.isArray(v) ? v : []),
     z.array(DepsTableRowSchema)
   ),
-  checkPoints: z.array(z.string()),
-  formalizationRisks: z.array(z.string()),
-  unprovenClaims: z.array(z.string())
+  checkPoints: z.preprocess(
+    (v) => (Array.isArray(v) ? v.map((item) => String(item)) : []),
+    z.array(z.string())
+  ),
+  formalizationRisks: z.preprocess(
+    (v) => (Array.isArray(v) ? v.map((item) => String(item)) : []),
+    z.array(z.string())
+  ),
+  unprovenClaims: z.preprocess(
+    (v) => (Array.isArray(v) ? v.map((item) => String(item)) : []),
+    z.array(z.string())
+  )
 });
 
 export const AgentSchemas = {
