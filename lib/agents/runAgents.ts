@@ -42,8 +42,8 @@ const ROLE_SEQUENCE: AgentRole[] = [
 ];
 
 // ✅ Fast mode knobs
-const ROLE_TIMEOUT_MS = 25000; // 25 seconds per role
-const EARLY_FINALIZE_AFTER_EDITOR = true; // show result ASAP
+const ROLE_TIMEOUT_MS = 120000; // 120 seconds per role
+const EARLY_FINALIZE_AFTER_EDITOR = false; // allow ProofChecker + Formalizer to run
 const MAX_RETRIES_DEFAULT = 1; // fewer retries in demo mode
 
 function extractJson(text: string) {
@@ -249,7 +249,10 @@ export async function runSession(sessionId: string): Promise<void> {
             const parsed = EditorSchema.safeParse(data);
             updateSession(sessionId, (s) => ({
               ...s,
-              finalProof: parsed.success ? parsed.data.finalProof : s.finalProof
+              finalProof: parsed.success ? parsed.data.finalProof : s.finalProof,
+              finalProofLatex: parsed.success
+                ? parsed.data.finalProofLatex ?? s.finalProofLatex
+                : s.finalProofLatex
             }));
 
             // ✅ Early finalize: show result ASAP
