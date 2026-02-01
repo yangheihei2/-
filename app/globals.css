@@ -246,6 +246,19 @@ button {
   box-shadow: 0 10px 28px rgba(99,102,241,.45);
 }
 
+.btnSmall.active {
+  border-color: rgba(34,197,94,.75);
+  background: linear-gradient(180deg, rgba(34,197,94,.95), rgba(22,163,74,.95));
+  box-shadow: 0 6px 18px rgba(34,197,94,.35);
+}
+
+.btnSmall:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
 .btnGhost {
   background: rgba(255,255,255,.04);
   border-color: rgba(255,255,255,.18);

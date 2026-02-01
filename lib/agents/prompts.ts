@@ -76,7 +76,7 @@ export const CounterexampleSchema = z.object({
 export const AssumptionAuditorSchema = z.object({
   role: z.literal("AssumptionAuditor"),
   issues: z.array(IssueSchema),
-  suggestedAssumptions: z.array(z.string()),
+  suggestedAssumptions: StringArray,
   minimalityNotes: z.string()
 });
 
@@ -124,6 +124,7 @@ const NotationArray = z.preprocess((v) => {
 export const EditorSchema = z.object({
   role: z.literal("Editor"),
   finalProof: z.string(),
+  finalProofLatex: z.string().optional(),
   structure: StringArray,          // ✅ tolerate string -> array
   notationMap: NotationArray,      // ✅ tolerate string -> []
   assumptionsUsed: StringArray,    // ✅ also tolerate string
@@ -234,8 +235,9 @@ export const AgentPrompts: Record<AgentRole, string> = {
   Editor: [
     "You are Editor, producing the final polished proof.",
     baseJsonRule,
-    "Return JSON fields: role, finalProof, structure, notationMap, assumptionsUsed, openGaps.",
+    "Return JSON fields: role, finalProof, finalProofLatex, structure, notationMap, assumptionsUsed, openGaps.",
     "IMPORTANT: finalProof MUST be step-structured; each step starts with 'Step k:' (k=1,2,3...).",
+    "finalProofLatex should be a LaTeX version of the proof (string).",
     'role must be exactly "Editor".'
   ].join("\n"),
 

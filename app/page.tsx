@@ -56,6 +56,7 @@ export default function HomePage() {
   const [issues, setIssues] = useState<Issue[]>([]);
   const [fixes, setFixes] = useState<Fix[]>([]);
   const [finalProof, setFinalProof] = useState("");
+  const [finalProofLatex, setFinalProofLatex] = useState("");
   const [depsTable, setDepsTable] = useState<Array<Record<string, unknown>>>([]);
   const [status, setStatus] = useState<"idle" | "running" | "done" | "error">("idle");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -99,6 +100,9 @@ export default function HomePage() {
       if (payload.role === "Editor" && typeof payload.json.finalProof === "string") {
         setFinalProof(payload.json.finalProof as string);
       }
+      if (payload.role === "Editor" && typeof payload.json.finalProofLatex === "string") {
+        setFinalProofLatex(payload.json.finalProofLatex as string);
+      }
       if (payload.role === "Formalizer" && Array.isArray(payload.json.depsTable)) {
         setDepsTable(payload.json.depsTable as Array<Record<string, unknown>>);
       }
@@ -140,13 +144,14 @@ export default function HomePage() {
   const handleRun = async () => {
     setStatus("running");
     setTab("result");
-    setMessages([]);
-    setIssues([]);
-    setFixes([]);
-    setFinalProof("");
-    setDepsTable([]);
-    setErrorMessage(null);
-    setSelectedIssueId(null);
+      setMessages([]);
+      setIssues([]);
+      setFixes([]);
+      setFinalProof("");
+      setFinalProofLatex("");
+      setDepsTable([]);
+      setErrorMessage(null);
+      setSelectedIssueId(null);
 
     const res = await fetch("/api/run", {
       method: "POST",
@@ -172,6 +177,7 @@ export default function HomePage() {
     setIssues([]);
     setFixes([]);
     setFinalProof("");
+    setFinalProofLatex("");
     setDepsTable([]);
     setErrorMessage(null);
     setSelectedIssueId(null);
@@ -346,7 +352,12 @@ export default function HomePage() {
           </div>
 
           {tab === "result" && (
-            <FinalProofPanel finalProof={finalProof} depsTable={depsTable} highlight={highlight} />
+            <FinalProofPanel
+              finalProof={finalProof}
+              finalProofLatex={finalProofLatex}
+              depsTable={depsTable}
+              highlight={highlight}
+            />
           )}
 
           {tab === "issues" && (
