@@ -25,6 +25,7 @@ export default function FinalProofPanel({
 
   const renderedLatex = useMemo(() => {
     if (!finalProofLatex) return "";
+    const normalizedLatex = finalProofLatex.replace(/(Step\s+\d+:)/g, "\n$1").trim();
     const escapeHtml = (value: string) =>
       value
         .replace(/&/g, "&amp;")
@@ -47,9 +48,9 @@ export default function FinalProofPanel({
     let html = "";
     let lastIndex = 0;
     let match: RegExpExecArray | null;
-    while ((match = regex.exec(finalProofLatex)) !== null) {
+    while ((match = regex.exec(normalizedLatex)) !== null) {
       const [fullMatch, displayMath, inlineMath] = match;
-      html += renderText(finalProofLatex.slice(lastIndex, match.index));
+      html += renderText(normalizedLatex.slice(lastIndex, match.index));
       if (displayMath) {
         html += renderMath(displayMath, true);
       } else if (inlineMath) {
@@ -57,7 +58,7 @@ export default function FinalProofPanel({
       }
       lastIndex = match.index + fullMatch.length;
     }
-    html += renderText(finalProofLatex.slice(lastIndex));
+    html += renderText(normalizedLatex.slice(lastIndex));
     return html;
   }, [finalProofLatex]);
 
