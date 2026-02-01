@@ -61,6 +61,36 @@ export default function FinalProofPanel({
     return html;
   }, [finalProofLatex]);
 
+  const displayDepsTable = useMemo(() => {
+    const normalizeArray = (value: unknown) =>
+      Array.isArray(value) ? value.map((item) => String(item)).filter(Boolean) : [];
+
+    return depsTable
+      .map((row) => {
+        const record = row ?? {};
+        const step = String(
+          (record as any).step ??
+            (record as any).stepId ??
+            (record as any).stepNumber ??
+            (record as any).stepName ??
+            (record as any).id ??
+            ""
+        ).trim();
+        const dependsOnAssumptions = normalizeArray((record as any).dependsOnAssumptions);
+        const dependsOnLemmas = normalizeArray((record as any).dependsOnLemmas);
+        const dependsOnSteps = normalizeArray((record as any).dependsOnSteps);
+
+        return { step, dependsOnAssumptions, dependsOnLemmas, dependsOnSteps };
+      })
+      .filter(
+        (row) =>
+          row.step ||
+          row.dependsOnAssumptions.length > 0 ||
+          row.dependsOnLemmas.length > 0 ||
+          row.dependsOnSteps.length > 0
+      );
+  }, [depsTable]);
+
   return (
     <div className="card">
       <div className="cardHeader">
@@ -134,7 +164,7 @@ export default function FinalProofPanel({
           Dependency Table (click to expand)
         </summary>
 
-        {depsTable.length === 0 ? (
+        {displayDepsTable.length === 0 ? (
           <p className="muted" style={{ marginTop: 8 }}>
             No dependency information available.
           </p>
@@ -149,24 +179,12 @@ export default function FinalProofPanel({
               </tr>
             </thead>
             <tbody>
-              {depsTable.map((row, i) => (
+              {displayDepsTable.map((row, i) => (
                 <tr key={i}>
-                  <td>{String(row.step ?? "")}</td>
-                  <td>
-                    {Array.isArray(row.dependsOnAssumptions)
-                      ? row.dependsOnAssumptions.join(", ")
-                      : ""}
-                  </td>
-                  <td>
-                    {Array.isArray(row.dependsOnLemmas)
-                      ? row.dependsOnLemmas.join(", ")
-                      : ""}
-                  </td>
-                  <td>
-                    {Array.isArray(row.dependsOnSteps)
-                      ? row.dependsOnSteps.join(", ")
-                      : ""}
-                  </td>
+                  <td>{row.step}</td>
+                  <td>{row.dependsOnAssumptions.join(", ")}</td>
+                  <td>{row.dependsOnLemmas.join(", ")}</td>
+                  <td>{row.dependsOnSteps.join(", ")}</td>
                 </tr>
               ))}
             </tbody>
