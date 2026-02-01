@@ -181,6 +181,7 @@ function summarize(state: SessionState) {
   return {
     status: state.status,
     finalProof: state.finalProof,
+    depsTable: state.depsTable,
     issueCount: state.issues.length,
     fixesCount: state.fixes.length
   };

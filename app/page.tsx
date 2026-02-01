@@ -128,6 +128,9 @@ export default function HomePage() {
       const payload = JSON.parse((event as MessageEvent).data);
       setStatus((payload.status as any) ?? "done");
       if (payload.finalProof) setFinalProof(payload.finalProof);
+      if (Array.isArray(payload.depsTable)) {
+        setDepsTable(payload.depsTable as Array<Record<string, unknown>>);
+      }
       source.close();
     });
 
