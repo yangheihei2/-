@@ -139,14 +139,66 @@ export const ProofCheckerSchema = z.object({
 });
 
 const DepsTableRowSchema = z.preprocess((val) => {
-  const obj = (val ?? {}) as any;
+  const normalizeStringArray = (value: unknown) => {
+    if (Array.isArray(value)) return value.map((item) => String(item)).filter((item) => item.trim());
+    if (typeof value === "string") {
+      return value
+        .split(/[,;\n]+/)
+        .map((item) => item.trim())
+        .filter(Boolean);
+    }
+    if (value === null || value === undefined) return [];
+    return [String(value)].filter((item) => item.trim());
+  };
+
+  if (typeof val === "string") {
+    return {
+      step: val,
+      dependsOnAssumptions: [],
+      dependsOnLemmas: [],
+      dependsOnSteps: []
+    };
+  }
+
+  const obj = (val ?? {}) as Record<string, unknown>;
+  const stepValue =
+    obj.step ??
+    obj.stepId ??
+    obj.stepNumber ??
+    obj.stepName ??
+    obj.id ??
+    obj.label ??
+    "";
+  const assumptionsValue =
+    obj.dependsOnAssumptions ??
+    obj.depends_on_assumptions ??
+    obj.assumptions ??
+    obj.assumptionDeps ??
+    obj.assumptionDependencies ??
+    obj.dependsOnAssumption ??
+    (obj.dependsOn as any)?.assumptions;
+  const lemmasValue =
+    obj.dependsOnLemmas ??
+    obj.depends_on_lemmas ??
+    obj.lemmas ??
+    obj.lemmaDeps ??
+    obj.lemmaDependencies ??
+    obj.dependsOnLemma ??
+    (obj.dependsOn as any)?.lemmas;
+  const stepsValue =
+    obj.dependsOnSteps ??
+    obj.depends_on_steps ??
+    obj.steps ??
+    obj.stepDeps ??
+    obj.stepDependencies ??
+    obj.dependsOnStep ??
+    (obj.dependsOn as any)?.steps;
+
   return {
-    step: obj.step ?? "",
-    dependsOnAssumptions: Array.isArray(obj.dependsOnAssumptions)
-      ? obj.dependsOnAssumptions
-      : [],
-    dependsOnLemmas: Array.isArray(obj.dependsOnLemmas) ? obj.dependsOnLemmas : [],
-    dependsOnSteps: Array.isArray(obj.dependsOnSteps) ? obj.dependsOnSteps : []
+    step: stepValue ? String(stepValue) : "",
+    dependsOnAssumptions: normalizeStringArray(assumptionsValue),
+    dependsOnLemmas: normalizeStringArray(lemmasValue),
+    dependsOnSteps: normalizeStringArray(stepsValue)
   };
 }, z.object({
   step: z.string(),
