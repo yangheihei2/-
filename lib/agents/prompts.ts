@@ -73,20 +73,6 @@ export const CounterexampleSchema = z.object({
   candidateCounterexamples: z.array(z.string())
 });
 
-export const AssumptionAuditorSchema = z.object({
-  role: z.literal("AssumptionAuditor"),
-  issues: z.array(IssueSchema),
-  suggestedAssumptions: StringArray,
-  minimalityNotes: z.string()
-});
-
-export const FixerSchema = z.object({
-  role: z.literal("Fixer"),
-  fixes: z.array(FixSchema),
-  patchedProof: z.string(),
-  stillOpenIssueIds: z.array(z.string())
-});
-
 export const NotationGuardianSchema = z.object({
   role: z.literal("NotationGuardian"),
   notationMap: z.array(
@@ -120,6 +106,20 @@ const NotationArray = z.preprocess((v) => {
   }
   return [];
 }, z.array(z.object({ symbol: z.string(), meaning: z.string() })));
+
+export const AssumptionAuditorSchema = z.object({
+  role: z.literal("AssumptionAuditor"),
+  issues: z.array(IssueSchema),
+  suggestedAssumptions: StringArray,
+  minimalityNotes: z.string()
+});
+
+export const FixerSchema = z.object({
+  role: z.literal("Fixer"),
+  fixes: z.array(FixSchema),
+  patchedProof: z.string(),
+  stillOpenIssueIds: z.array(z.string())
+});
 
 export const EditorSchema = z.object({
   role: z.literal("Editor"),
