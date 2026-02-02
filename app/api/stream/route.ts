@@ -39,6 +39,8 @@ export async function GET(request: Request) {
           controller.enqueue(encoder.encode(formatSse("message", event.payload)));
         } else if (event.type === "issue") {
           controller.enqueue(encoder.encode(formatSse("issue", event.payload)));
+        } else if (event.type === "paper-proof") {
+          controller.enqueue(encoder.encode(formatSse("paper-proof", event.payload)));
         } else if (event.type === "done") {
           controller.enqueue(encoder.encode(formatSse("done", event.payload)));
           controller.close();
@@ -54,6 +56,18 @@ export async function GET(request: Request) {
       }
       for (const issue of record!.state.issues) {
         controller.enqueue(encoder.encode(formatSse("issue", issue)));
+      }
+      if (record!.state.paperProofStatus && record!.state.paperProofStatus !== "idle") {
+        controller.enqueue(
+          encoder.encode(
+            formatSse("paper-proof", {
+              status: record!.state.paperProofStatus,
+              proof: record!.state.paperProof,
+              usedPapers: record!.state.paperSources,
+              error: record!.state.paperProofError
+            })
+          )
+        );
       }
 
       // ✅ If already done, return immediately

@@ -248,7 +248,9 @@ const baseJsonRule =
   "Output ONLY one JSON object parseable by JSON.parse. No markdown, no backticks, no extra text. All fields must be present. Use empty arrays/strings when needed.";
 
 const contextRule =
-  'Input payload fields: theorem, assumptions, draftProof. draftProof contains background/context notes (not necessarily a full proof).';
+  "Input payload fields include theorem, assumptions, draftProof, paperProof, paperSources. " +
+  "draftProof contains background/context notes (not necessarily a full proof). " +
+  "If paperProof is present, use it as guidance and reference which paperSources were used.";
 
 const issueRule = [
   "For issues:",
