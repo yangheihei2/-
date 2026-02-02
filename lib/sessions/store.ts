@@ -33,6 +33,7 @@ export type SessionState = {
   theorem: string;
   assumptions: string;
   draftProof: string;
+  imageText: string;
   config: {
     provider: "deepseek" | "openai" | "doubao";
     model: string;
@@ -48,6 +49,10 @@ export type SessionState = {
   finalProof: string;
   finalProofLatex?: string;
   depsTable: Array<Record<string, unknown>>;
+  paperProof?: string;
+  paperSources?: Array<{ id: string; title: string; usage: string }>;
+  paperProofStatus?: "idle" | "running" | "done" | "error";
+  paperProofError?: string;
   status: "idle" | "running" | "done" | "error";
   errorMessage?: string;
 };
@@ -55,6 +60,15 @@ export type SessionState = {
 export type StreamEvent =
   | { type: "message"; payload: SessionMessage }
   | { type: "issue"; payload: Issue }
+  | {
+      type: "paper-proof";
+      payload: {
+        status: "idle" | "running" | "done" | "error";
+        proof?: string;
+        usedPapers?: Array<{ id: string; title: string; usage: string }>;
+        error?: string;
+      };
+    }
   | { type: "done"; payload: Partial<SessionState> }
   | { type: "error"; payload: { message: string } };
 

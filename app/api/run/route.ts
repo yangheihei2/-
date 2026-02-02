@@ -6,7 +6,7 @@ export const runtime = "nodejs";
 
 export async function POST(request: Request) {
   const body = await request.json();
-  const { theorem, assumptions, draftProof, config } = body ?? {};
+  const { theorem, assumptions, draftProof, imageText, config } = body ?? {};
   const sessionId = crypto.randomUUID();
 
   const session: SessionState = {
@@ -14,6 +14,7 @@ export async function POST(request: Request) {
     theorem: theorem ?? "",
     assumptions: assumptions ?? "",
     draftProof: draftProof ?? "",
+    imageText: imageText ?? "",
     config: {
       provider: config?.provider ?? "deepseek",
       model: config?.model ?? "deepseek-chat",
@@ -28,6 +29,9 @@ export async function POST(request: Request) {
     finalProof: "",
     finalProofLatex: "",
     depsTable: [],
+    paperProof: "",
+    paperSources: [],
+    paperProofStatus: "idle",
     status: "idle"
   };
 

@@ -20,6 +20,7 @@ import {
   type SessionState
 } from "../sessions/store";
 import { callDeepSeekChat } from "../deepseek/client";
+import { generatePaperProof } from "../papers/composePaperProof";
 
 /**
  * Ultra-fast demo mode:
@@ -78,10 +79,13 @@ function buildPayload(role: AgentRole, state: SessionState) {
     theorem: state.theorem,
     assumptions: state.assumptions,
     draftProof: state.draftProof,
+    imageText: state.imageText,
     config: state.config,
     issues: state.issues,
     fixes: state.fixes,
-    finalProof: state.finalProof
+    finalProof: state.finalProof,
+    paperProof: state.paperProof,
+    paperSources: state.paperSources
   };
 }
 
@@ -182,6 +186,8 @@ function summarize(state: SessionState) {
     status: state.status,
     finalProof: state.finalProof,
     depsTable: state.depsTable,
+    paperProof: state.paperProof,
+    paperSources: state.paperSources,
     issueCount: state.issues.length,
     fixesCount: state.fixes.length
   };
@@ -195,6 +201,46 @@ export async function runSession(sessionId: string): Promise<void> {
   updateSession(sessionId, (s) => ({ ...s, status: "running", errorMessage: undefined }));
 
   try {
+    updateSession(sessionId, (s) => ({
+      ...s,
+      paperProofStatus: "running",
+      paperProofError: undefined
+    }));
+    emitEvent(sessionId, { type: "paper-proof", payload: { status: "running" } });
+
+    try {
+      const current = getSessionRecord(sessionId);
+      if (current) {
+        const paperResult = await generatePaperProof({
+          theorem: current.state.theorem,
+          assumptions: current.state.assumptions,
+          background: current.state.draftProof,
+          imageText: current.state.imageText,
+          model: current.state.config.model,
+          temperature: current.state.config.temperature,
+          maxPapers: 3
+        });
+        updateSession(sessionId, (s) => ({
+          ...s,
+          paperProof: paperResult.proof,
+          paperSources: paperResult.usedPapers,
+          paperProofStatus: "done"
+        }));
+        emitEvent(sessionId, {
+          type: "paper-proof",
+          payload: { status: "done", proof: paperResult.proof, usedPapers: paperResult.usedPapers }
+        });
+      }
+    } catch (error) {
+      const message = (error as Error).message || "Paper proof failed.";
+      updateSession(sessionId, (s) => ({
+        ...s,
+        paperProofStatus: "error",
+        paperProofError: message
+      }));
+      emitEvent(sessionId, { type: "paper-proof", payload: { status: "error", error: message } });
+    }
+
     const maxRounds = record.state.config.maxRounds || 1;
 
     for (let round = 1; round <= maxRounds; round += 1) {
