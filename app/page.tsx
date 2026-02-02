@@ -157,8 +157,18 @@ export default function HomePage() {
     });
 
     source.addEventListener("error", (event) => {
-      const payload = JSON.parse((event as MessageEvent).data ?? "{}");
-      setErrorMessage(payload.message ?? "Stream error");
+      if (status === "done" || status === "error") return;
+      let message = "Stream error";
+      try {
+        const data = (event as MessageEvent).data;
+        if (data) {
+          const payload = JSON.parse(data);
+          if (payload?.message) message = payload.message;
+        }
+      } catch (error) {
+        message = "Stream error";
+      }
+      setErrorMessage(message);
       setStatus("error");
       source.close();
     });
