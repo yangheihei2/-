@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Script from "next/script";
 import "katex/dist/katex.min.css";
 import "./globals.css";
 
@@ -12,6 +13,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="zh">
       <body>
         {children}
+        <Script
+          src="https://unpkg.com/tesseract.js@5.0.4/dist/tesseract.min.js"
+          strategy="afterInteractive"
+        />
       </body>
     </html>
   );

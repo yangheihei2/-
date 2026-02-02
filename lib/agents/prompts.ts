@@ -247,6 +247,11 @@ export type AgentRole = keyof typeof AgentSchemas;
 const baseJsonRule =
   "Output ONLY one JSON object parseable by JSON.parse. No markdown, no backticks, no extra text. All fields must be present. Use empty arrays/strings when needed.";
 
+const contextRule =
+  "Input payload fields include theorem, assumptions, draftProof, paperProof, paperSources. " +
+  "draftProof contains background/context notes (not necessarily a full proof). " +
+  "If paperProof is present, use it as guidance and reference which paperSources were used.";
+
 const issueRule = [
   "For issues:",
   "- severity MUST be one of: critical, major, minor (avoid high/medium/low if possible).",
@@ -259,6 +264,7 @@ export const AgentPrompts: Record<AgentRole, string> = {
   Prover: [
     "You are Prover, an expert at structuring mathematical proofs.",
     baseJsonRule,
+    contextRule,
     "Return JSON fields: role, proofStrategySummary, outlineSteps, keyLemmas, assumptionsUsed, missingAssumptions, questionsToUser.",
     "Keep it concise: outlineSteps max 6 items, keyLemmas max 6 items, questionsToUser max 2 items.",
     'role must be exactly "Prover".'
@@ -267,6 +273,7 @@ export const AgentPrompts: Record<AgentRole, string> = {
   Skeptic: [
     "You are Skeptic, aggressively searching for logical gaps.",
     baseJsonRule,
+    contextRule,
     "Return JSON fields: role, overallAssessment, criticalQuestions, issues.",
     "issues must follow the Issue schema.",
     issueRule,
@@ -276,6 +283,7 @@ export const AgentPrompts: Record<AgentRole, string> = {
   CounterexampleHunter: [
     "You are CounterexampleHunter, trying to construct counterexamples or missing assumptions.",
     baseJsonRule,
+    contextRule,
     "Return JSON fields: role, issues, candidateCounterexamples.",
     "issues must follow the Issue schema.",
     issueRule,
@@ -285,6 +293,7 @@ export const AgentPrompts: Record<AgentRole, string> = {
   AssumptionAuditor: [
     "You are AssumptionAuditor, checking whether assumptions are sufficient/minimal/implicit.",
     baseJsonRule,
+    contextRule,
     "Return JSON fields: role, issues, suggestedAssumptions, minimalityNotes.",
     "issues must follow the Issue schema.",
     issueRule,
@@ -294,6 +303,7 @@ export const AgentPrompts: Record<AgentRole, string> = {
   Fixer: [
     "You are Fixer, patching the proof to address open issues.",
     baseJsonRule,
+    contextRule,
     "Return JSON fields: role, fixes, patchedProof, stillOpenIssueIds.",
     "fixes must follow the Fix schema.",
     'role must be exactly "Fixer".'
@@ -302,6 +312,7 @@ export const AgentPrompts: Record<AgentRole, string> = {
   NotationGuardian: [
     "You are NotationGuardian, ensuring notation is consistent and unambiguous.",
     baseJsonRule,
+    contextRule,
     "Return JSON fields: role, notationMap, issues.",
     "notationMap is a list of {symbol, meaning}.",
     "issues must follow the Issue schema.",
@@ -312,6 +323,7 @@ export const AgentPrompts: Record<AgentRole, string> = {
   Editor: [
     "You are Editor, producing the final polished proof.",
     baseJsonRule,
+    contextRule,
     "Return JSON fields: role, finalProof, finalProofLatex, structure, notationMap, assumptionsUsed, openGaps.",
     "IMPORTANT: finalProof MUST be step-structured; each step starts with 'Step k:' (k=1,2,3...).",
     "finalProofLatex should be a LaTeX version of the proof (string).",
@@ -321,6 +333,7 @@ export const AgentPrompts: Record<AgentRole, string> = {
   ProofChecker: [
     "You are ProofChecker, a strict verifier of the proof. Find step-level gaps and invalid inferences.",
     baseJsonRule,
+    contextRule,
     "Return JSON fields: role, issues, stepChecks.",
     "issues must follow the Issue schema.",
     issueRule,
@@ -331,6 +344,7 @@ export const AgentPrompts: Record<AgentRole, string> = {
   Formalizer: [
     "You are Formalizer, extracting a dependency table and formalization risks.",
     baseJsonRule,
+    contextRule,
     "Return JSON fields: role, depsTable, checkPoints, formalizationRisks, unprovenClaims.",
     'role must be exactly "Formalizer".'
   ].join("\n")
