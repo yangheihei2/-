@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ChangeEvent } from "react";
 import Timeline, { type TimelineMessage } from "../components/Timeline";
 import IssuesPanel from "../components/IssuesPanel";
 import FinalProofPanel from "../components/FinalProofPanel";
@@ -40,6 +40,9 @@ export default function HomePage() {
   const [theorem, setTheorem] = useState(defaultTheorem);
   const [assumptions, setAssumptions] = useState(defaultAssumptions);
   const [draftProof, setDraftProof] = useState(defaultDraft);
+  const [ocrText, setOcrText] = useState("");
+  const [ocrStatus, setOcrStatus] = useState<"idle" | "running" | "done" | "error">("idle");
+  const [ocrError, setOcrError] = useState<string | null>(null);
 
   // model
   const [provider, setProvider] = useState<ProviderKey>("deepseek");
@@ -61,6 +64,10 @@ export default function HomePage() {
   const [status, setStatus] = useState<"idle" | "running" | "done" | "error">("idle");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [selectedIssueId, setSelectedIssueId] = useState<string | null>(null);
+  const [paperProof, setPaperProof] = useState("");
+  const [paperSources, setPaperSources] = useState<Array<{ id: string; title: string; usage: string }>>([]);
+  const [paperLoading, setPaperLoading] = useState(false);
+  const [paperError, setPaperError] = useState<string | null>(null);
 
   // provider change => default model
   useEffect(() => {
@@ -171,10 +178,70 @@ export default function HomePage() {
     setSessionId(data.sessionId);
   };
 
+  const handlePaperProof = async () => {
+    setPaperLoading(true);
+    setPaperError(null);
+    setPaperProof("");
+    setPaperSources([]);
+    try {
+      const res = await fetch("/api/paper-proof", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          theorem,
+          assumptions,
+          background: draftProof,
+          imageText: ocrText,
+          model,
+          temperature,
+          maxPapers: 3
+        })
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data?.error ?? "Paper proof request failed.");
+      }
+      setPaperProof(String(data?.proof ?? ""));
+      setPaperSources(Array.isArray(data?.usedPapers) ? data.usedPapers : []);
+    } catch (error) {
+      setPaperError((error as Error).message);
+    } finally {
+      setPaperLoading(false);
+    }
+  };
+
+  const handleImageUpload = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    setOcrStatus("running");
+    setOcrError(null);
+
+    try {
+      const tesseract = (window as Window & { Tesseract?: { recognize: (input: File, lang: string) => Promise<{ data: { text?: string } }> } })
+        .Tesseract;
+      if (!tesseract) {
+        throw new Error("OCR engine not loaded yet. Please retry in a moment.");
+      }
+      const { data } = await tesseract.recognize(file, "eng");
+      const text = data.text?.trim() ?? "";
+      setOcrText(text);
+      if (text) {
+        setDraftProof((prev) => (prev ? `${prev}\n\n[OCR Extract]\n${text}` : text));
+      }
+      setOcrStatus("done");
+    } catch (error) {
+      setOcrStatus("error");
+      setOcrError((error as Error).message);
+    }
+  };
+
   const handleReset = () => {
     setTheorem(defaultTheorem);
     setAssumptions(defaultAssumptions);
     setDraftProof(defaultDraft);
+    setOcrText("");
+    setOcrStatus("idle");
+    setOcrError(null);
     setTab("result");
     setMessages([]);
     setIssues([]);
@@ -186,6 +253,10 @@ export default function HomePage() {
     setSelectedIssueId(null);
     setSessionId(null);
     setStatus("idle");
+    setPaperProof("");
+    setPaperSources([]);
+    setPaperError(null);
+    setPaperLoading(false);
   };
 
   return (
@@ -221,7 +292,7 @@ export default function HomePage() {
           <div className="cardHeader">
             <div className="cardTitleRow">
               <h2>Workspace</h2>
-              <div className="hint">Provide theorem, assumptions, and an optional draft proof.</div>
+              <div className="hint">Provide theorem, assumptions, and background notes (optional).</div>
             </div>
             <span className="badge">SSE live updates</span>
           </div>
@@ -237,8 +308,30 @@ export default function HomePage() {
           </div>
 
           <div className="field">
-            <label htmlFor="draft">Draft proof (optional)</label>
-            <textarea id="draft" value={draftProof} onChange={(e) => setDraftProof(e.target.value)} />
+            <label htmlFor="draft">Background context (optional)</label>
+            <textarea
+              id="draft"
+              value={draftProof}
+              onChange={(e) => setDraftProof(e.target.value)}
+              placeholder="Add related background, intuition, or literature notes to guide the proof search."
+            />
+          </div>
+
+          <div className="field">
+            <label htmlFor="background-image">Background image (OCR)</label>
+            <input id="background-image" type="file" accept="image/*" onChange={handleImageUpload} />
+            <div className="hint">
+              OCR status: {ocrStatus}
+              {ocrError ? ` · ${ocrError}` : ""}
+            </div>
+            {ocrText ? <pre className="proof-pre">{ocrText}</pre> : null}
+          </div>
+
+          <div className="field">
+            <button className="btnSmall" onClick={handlePaperProof} disabled={paperLoading}>
+              {paperLoading ? "Searching papers…" : "Generate proof from papers"}
+            </button>
+            {paperError ? <p className="muted">{paperError}</p> : null}
           </div>
 
           <div className="field">
@@ -355,12 +448,49 @@ export default function HomePage() {
           </div>
 
           {tab === "result" && (
-            <FinalProofPanel
-              finalProof={finalProof}
-              finalProofLatex={finalProofLatex}
-              depsTable={depsTable}
-              highlight={highlight}
-            />
+            <>
+              <FinalProofPanel
+                finalProof={finalProof}
+                finalProofLatex={finalProofLatex}
+                depsTable={depsTable}
+                highlight={highlight}
+              />
+              <div className="card">
+                <div className="cardHeader">
+                  <div className="cardTitleRow">
+                    <h2>Paper-based Proof</h2>
+                    <div className="hint">Generated by retrieving proof excerpts from the paper library.</div>
+                  </div>
+                  <span className="badge">
+                    {paperSources.length ? `${paperSources.length} papers used` : "—"}
+                  </span>
+                </div>
+                {paperError ? (
+                  <div className="error-panel">
+                    <p className="error-title">Paper proof failed</p>
+                    <pre className="proof-pre">{paperError}</pre>
+                  </div>
+                ) : paperProof ? (
+                  <>
+                    {paperSources.length ? (
+                      <div style={{ marginBottom: 12 }}>
+                        <strong>Sources</strong>
+                        <ul className="muted">
+                          {paperSources.map((paper) => (
+                            <li key={paper.id}>
+                              <strong>{paper.title}</strong>: {paper.usage}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    ) : null}
+                    <pre className="proof-pre">{paperProof}</pre>
+                  </>
+                ) : (
+                  <p className="muted">No paper-based proof generated yet.</p>
+                )}
+              </div>
+            </>
           )}
 
           {tab === "issues" && (
