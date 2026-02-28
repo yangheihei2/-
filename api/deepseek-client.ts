@@ -1,8 +1,42 @@
 const DEEPSEEK_API_URL = 'https://api.deepseek.com/chat/completions';
-const REQUEST_TIMEOUT_MS = 55000;
+const REQUEST_TIMEOUT_MS_DEFAULT = 90000;
 const MAX_RETRIES = 2;
+const REQUEST_TIMEOUT_MS_MIN = 30000;
+const REQUEST_TIMEOUT_MS_MAX = 180000;
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+
+function parseConfiguredTimeoutMs(rawValue: string) {
+  const value = rawValue.trim().toLowerCase();
+  if (!value) return NaN;
+
+  if (/^\d+$/.test(value)) {
+    const numeric = Number(value);
+    // Backward-compatible convenience:
+    // 1) If user set a small integer like "5", it's almost always intended as seconds.
+    // 2) Larger integers are treated as milliseconds.
+    return numeric <= 300 ? numeric * 1000 : numeric;
+  }
+
+  const msMatch = value.match(/^(\d+)ms$/);
+  if (msMatch) {
+    return Number(msMatch[1]);
+  }
+
+  const sMatch = value.match(/^(\d+)s$/);
+  if (sMatch) {
+    return Number(sMatch[1]) * 1000;
+  }
+
+  return NaN;
+}
+
+function getRequestTimeoutMs() {
+  const configured = parseConfiguredTimeoutMs(process.env.DEEPSEEK_REQUEST_TIMEOUT_MS || '');
+  if (!Number.isFinite(configured) || configured <= 0) return REQUEST_TIMEOUT_MS_DEFAULT;
+  return Math.min(REQUEST_TIMEOUT_MS_MAX, Math.max(REQUEST_TIMEOUT_MS_MIN, Math.floor(configured)));
+}
 
 interface DeepSeekCallParams {
   apiKey: string;
@@ -16,7 +50,8 @@ export async function callDeepSeek({ apiKey, model, messages, temperature }: Dee
 
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt += 1) {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+    const requestTimeoutMs = getRequestTimeoutMs();
+    const timeout = setTimeout(() => controller.abort(), requestTimeoutMs);
 
     try {
       const body: Record<string, unknown> = {
@@ -55,7 +90,7 @@ export async function callDeepSeek({ apiKey, model, messages, temperature }: Dee
       return data;
     } catch (error) {
       if (error instanceof Error && error.name === 'AbortError') {
-        lastError = `DeepSeek request timed out after ${REQUEST_TIMEOUT_MS / 1000}s.`;
+        lastError = `DeepSeek request timed out after ${requestTimeoutMs / 1000}s.`;
       } else {
         lastError = error instanceof Error ? error.message : 'Unknown DeepSeek request error.';
       }
