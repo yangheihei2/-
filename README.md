@@ -88,52 +88,60 @@ flowchart LR
 
 ---
 
-## Workspace 示例：Theorem 1（阈值选择与错误率控制）
+## Workspace Example: Theorem 1 (Threshold Selection and Error-Rate Control)
 
-下面给出一个可放入 workspace 的定理示例（根据你给的图整理为可读文本），用于演示系统如何执行“文献检索 → 候选证明 → 验证 → 修订”流程。
+<small>This workspace example is adapted from your provided theorem image and is structured to demonstrate the workflow: literature search → candidate proof → verification → revision.</small>
 
-> **Theorem 1.** 设已有阈值为 \(t_1,\dots,t_{i-1}\)。考虑留出类别 \(S_{i_t}\) 上的分数集合
-> \[
-> \overline{T}_i = \{T_i(X)\mid X\in S_{i_t}\},
-> \]
-> 以及依赖先前阈值筛选后的子集
-> \[
-> \overline{T}'_i=\{T_i(X)\mid X\in S_{i_t},\ T_1(X)<t_1,\dots,T_{i-1}(X)<t_{i-1}\}.
-> \]
-> 记 \(t_{i(k)}\)、\(t'_{i(k)}\) 分别是 \(\overline{T}_i\)、\(\overline{T}'_i\) 的第 \(k\) 阶顺序统计量；
-> 令 \(n_i, n'_i\) 分别为两集合基数，\(\alpha_i\) 与 \(\delta_i\) 分别为第 \(i\) 类欠分类误差 \(R_{i\star}(\cdot)\) 的控制水平与容忍度。
->
-> 定义
-> \[
-> \hat p_i=\frac{n'_i}{n_i},\quad p_i=\hat p_i+c(n_i),\quad \alpha'_i=\frac{\alpha_i}{p_i},\quad
-> \delta'_i=\delta_i-\exp\{-2n_i c^2(n_i)\},
-> \]
-> 其中 \(c(n)=O(1/\sqrt n)\)。令
-> \[
-> \bar t_i=
-> \begin{cases}
-> t'_{i(k'_i)}, & \text{if } n'_i\ge \log\delta'_i/\log(1-\alpha'_i)\ \text{and}\ \alpha'_i<1,\\
-> t_{i(k_i)}, & \text{otherwise},
-> \end{cases}
-> \]
-> 其中
-> \[
-> k_i=\max\{k\in[n_i]\mid v(k,n_i,\alpha_i)\le\delta_i\},\quad
-> k'_i=\max\{k\in[n'_i]\mid v(k,n'_i,\alpha'_i)\le\delta'_i\}.
-> \]
-> 则对所有 \(t_i\le \bar t_i\)，有
-> \[
-> \mathbb P\big(R_{i\star}(\hat\phi)>\alpha_i\big)
-> =
-> \mathbb P\Big(P_i\big[T_1(X)<t_1,\dots,T_i(X)<t_i\mid \bar t_i\big]>\alpha_i\Big)
-> \le\delta_i.
-> \]
+### Known Assumptions
 
-在这个 workspace 示例中，系统可自动输出：
+<small>
+Let prior thresholds \(t_1,\dots,t_{i-1}\) be fixed. On the left-out class \(S_{i_t}\), define
+\[
+\overline{T}_i = \{T_i(X)\mid X\in S_{i_t}\},
+\]
+and the filtered subset (conditioned on previous thresholds)
+\[
+\overline{T}'_i=\{T_i(X)\mid X\in S_{i_t},\ T_1(X)<t_1,\dots,T_{i-1}(X)<t_{i-1}\}.
+\]
+Let \(t_{i(k)}\) and \(t'_{i(k)}\) denote the \(k\)-th order statistics of \(\overline{T}_i\) and \(\overline{T}'_i\), respectively. Let \(n_i\) and \(n'_i\) be their cardinalities. Let \(\alpha_i\) and \(\delta_i\) be the target control level and violation tolerance for the \(i\)-th under-classification error \(R_{i\star}(\cdot)\).
 
-- `Possible Proof Ideas`：基于顺序统计量、浓度不等式（如 Hoeffding 型界）与分段阈值构造。  
-- `Candidate Theorems`：与分位点控制、选择偏差修正、条件概率上界相关的候选文献结果。  
-- `Verifier Checklist`：假设条件是否完整、\(\delta'_i\) 是否为正、分段条件是否覆盖全域等。
+Define
+\[
+\hat p_i=\frac{n'_i}{n_i},\quad p_i=\hat p_i+c(n_i),\quad \alpha'_i=\frac{\alpha_i}{p_i},\quad
+\delta'_i=\delta_i-\exp\{-2n_i c^2(n_i)\},
+\]
+where \(c(n)=O(1/\sqrt n)\). Also define
+\[
+\bar t_i=
+\begin{cases}
+t'_{i(k'_i)}, & \text{if } n'_i\ge \log\delta'_i/\log(1-\alpha'_i)\ \text{and}\ \alpha'_i<1,\\
+t_{i(k_i)}, & \text{otherwise},
+\end{cases}
+\]
+with
+\[
+k_i=\max\{k\in[n_i]\mid v(k,n_i,\alpha_i)\le\delta_i\},\quad
+k'_i=\max\{k\in[n'_i]\mid v(k,n'_i,\alpha'_i)\le\delta'_i\}.
+\]
+</small>
+
+### Theorem Statement
+
+<small>
+For all \(t_i\le \bar t_i\),
+\[
+\mathbb P\big(R_{i\star}(\hat\phi)>\alpha_i\big)
+=
+\mathbb P\Big(P_i\big[T_1(X)<t_1,\dots,T_i(X)<t_i\mid \bar t_i\big]>\alpha_i\Big)
+\le\delta_i.
+\]
+</small>
+
+In this workspace example, the system can automatically produce:
+
+- `Possible Proof Ideas`: order-statistics argument + concentration bounds (e.g., Hoeffding-type control) + piecewise threshold construction.  
+- `Candidate Theorems`: related results on quantile control, selection-bias correction, and conditional-probability upper bounds.  
+- `Verifier Checklist`: completeness of assumptions, positivity of \(\delta'_i\), and whether piecewise conditions cover all cases.
 
 ---
 
