@@ -179,10 +179,12 @@ npm install
 ```env
 GEMINI_API_KEY=your_gemini_key
 DEEPSEEK_API_KEY=your_deepseek_key
+DEEPSEEK_REQUEST_TIMEOUT_MS=90000  # 可选：DeepSeek 单次请求超时（毫秒）
 ```
 
 > 只使用 Gemini 时，可只配置 `GEMINI_API_KEY`。  
 > 若在 UI 选择 DeepSeek 模型，则必须配置 `DEEPSEEK_API_KEY`。
+> `DEEPSEEK_REQUEST_TIMEOUT_MS` 为可选项，默认 `90000`（90 秒），范围会被限制在 `5000` 到 `180000` 毫秒。
 
 ### 3. 启动开发环境
 
