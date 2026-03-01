@@ -40,6 +40,12 @@ interface LiteratureMatch {
   url?: string;
 }
 
+interface LiteratureKeywords {
+  suggested: string;
+  used: string;
+  source: 'ai' | 'fallback' | 'manual';
+}
+
 interface GenerateProofResponse {
   proof: string;
 }
@@ -151,6 +157,9 @@ export default function App() {
   const [candidateTheorems, setCandidateTheorems] = useState<CandidateTheorem[]>([]);
   const [literatureMatches, setLiteratureMatches] = useState<LiteratureMatch[]>([]);
   const [isSearchingLiterature, setIsSearchingLiterature] = useState(false);
+  const [researchField, setResearchField] = useState('');
+  const [literatureKeywords, setLiteratureKeywords] = useState('');
+  const [keywordSource, setKeywordSource] = useState<LiteratureKeywords['source']>('fallback');
 
   const logEndRef = useRef<HTMLDivElement>(null);
   const proofRef = useRef<HTMLDivElement>(null);
@@ -165,9 +174,14 @@ export default function App() {
   );
 
   useEffect(() => {
-    const query = `${theorem} ${assumptions}`.trim();
+    setLiteratureKeywords('');
+  }, [theorem, assumptions]);
+
+  useEffect(() => {
+    const query = `${theorem} ${assumptions} ${researchField}`.trim();
     if (!query) {
       setLiteratureMatches([]);
+      setLiteratureKeywords('');
       return;
     }
 
@@ -178,7 +192,7 @@ export default function App() {
         const response = await fetch('/api/literature-search', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ theorem, assumptions }),
+          body: JSON.stringify({ theorem, assumptions, researchField, keywords: literatureKeywords, model: selectedModelId }),
           signal: controller.signal,
         });
 
@@ -188,7 +202,14 @@ export default function App() {
 
         const data = await response.json();
         const matches = Array.isArray(data?.literature) ? data.literature : [];
+        const keywords = typeof data?.keywords === 'object' && data.keywords !== null ? data.keywords as LiteratureKeywords : null;
         setLiteratureMatches(matches.slice(0, 8));
+        if (keywords) {
+          setKeywordSource(keywords.source || 'fallback');
+          if (!literatureKeywords.trim()) {
+            setLiteratureKeywords(keywords.suggested || keywords.used || '');
+          }
+        }
       } catch (error) {
         if (error instanceof DOMException && error.name === 'AbortError') {
           return;
@@ -204,7 +225,7 @@ export default function App() {
       window.clearTimeout(timeoutId);
       controller.abort();
     };
-  }, [theorem, assumptions]);
+  }, [theorem, assumptions, researchField, literatureKeywords, selectedModelId]);
 
   const addLog = (message: string, type: LogEntry['type'] = 'info') => {
     const now = new Date();
@@ -533,7 +554,27 @@ export default function App() {
 
             <div className="relative mb-6">
               <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
-              <input type="text" value={theorem ? theorem.slice(0, 60) : ''} readOnly placeholder="Search academic archives..." className="w-full bg-slate-50 border border-slate-200 rounded-lg py-2.5 pl-11 pr-4 text-sm text-slate-600" />
+              <input
+                type="text"
+                value={researchField}
+                onChange={(event) => setResearchField(event.target.value)}
+                placeholder="Specific field (e.g. statistics, computer science)..."
+                className="w-full bg-slate-50 border border-slate-200 rounded-lg py-2.5 pl-11 pr-4 text-sm text-slate-700"
+              />
+            </div>
+
+            <div className="mb-6">
+              <label htmlFor="literature-keywords" className="text-[10px] uppercase tracking-wider text-slate-400 font-bold block mb-1">
+                AI Keywords ({keywordSource})
+              </label>
+              <input
+                id="literature-keywords"
+                type="text"
+                value={literatureKeywords}
+                onChange={(event) => setLiteratureKeywords(event.target.value)}
+                placeholder="AI will summarize keywords from your theorem and assumptions..."
+                className="w-full bg-slate-50 border border-slate-200 rounded-lg py-2 pl-3 pr-3 text-xs text-slate-600"
+              />
             </div>
 
             <div className="flex-1 overflow-y-auto space-y-4 pr-2 custom-scrollbar">

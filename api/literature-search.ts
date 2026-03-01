@@ -1,3 +1,6 @@
+import { GoogleGenAI } from '@google/genai';
+import { callDeepSeek } from './deepseek-client.js';
+
 interface LiteratureMatch {
   title: string;
   authors: string;
@@ -7,8 +10,40 @@ interface LiteratureMatch {
   url?: string;
 }
 
+interface KeywordExtractionResult {
+  suggested: string;
+  used: string;
+  source: 'ai' | 'fallback' | 'manual';
+}
+
 const CROSSREF_API = 'https://api.crossref.org/works';
 const ARXIV_API = 'https://export.arxiv.org/api/query';
+
+
+type KeywordModelProvider = 'gemini' | 'deepseek';
+
+function inferProviderFromModel(model: string): KeywordModelProvider {
+  if (model.startsWith('deepseek-')) return 'deepseek';
+  return 'gemini';
+}
+
+function buildKeywordPrompt(theorem: string, assumptions: string, researchField: string) {
+  return `You summarize search keywords for academic literature retrieval.
+Return ONLY one line of comma-separated keywords.
+
+Problem statement:
+${theorem}
+Assumptions:
+${assumptions || '(none)'}
+Target research field:
+${researchField || '(not specified)'}
+
+Rules:
+- Output 4-10 concise keywords/phrases.
+- Prioritize domain-specific terms and methods.
+- Include field hint if provided.
+- No numbering, no explanation, no markdown.`;
+}
 
 function clip(text: string, maxLen = 180) {
   if (!text) return '';
@@ -136,6 +171,64 @@ function dedupeAndRank(records: LiteratureMatch[], limit: number) {
     .slice(0, limit);
 }
 
+function fallbackKeywords(theorem: string, assumptions: string, researchField: string) {
+  const raw = [theorem, assumptions, researchField].join(' ').toLowerCase();
+  const tokens = raw
+    .split(/[^a-z0-9]+/)
+    .map((token) => token.trim())
+    .filter((token) => token.length >= 4)
+    .filter((token, index, arr) => arr.indexOf(token) === index)
+    .slice(0, 8);
+  return tokens.join(', ');
+}
+
+async function extractKeywordsWithAI(theorem: string, assumptions: string, researchField: string, model: string) {
+  const provider = inferProviderFromModel(model);
+  const prompt = buildKeywordPrompt(theorem, assumptions, researchField);
+
+  if (provider === 'deepseek') {
+    const apiKey = process.env.DEEPSEEK_API_KEY;
+    if (!apiKey) {
+      return fallbackKeywords(theorem, assumptions, researchField);
+    }
+
+    try {
+      const data = await callDeepSeek({
+        apiKey,
+        model,
+        messages: [
+          { role: 'system', content: 'You output only compact comma-separated keywords.' },
+          { role: 'user', content: prompt },
+        ],
+        temperature: 0.2,
+      });
+      const text = String(data?.choices?.[0]?.message?.content || '').replace(/\n+/g, ' ').trim();
+      return text || fallbackKeywords(theorem, assumptions, researchField);
+    } catch (error) {
+      console.warn('DeepSeek keyword extraction failed, using fallback keywords:', error);
+      return fallbackKeywords(theorem, assumptions, researchField);
+    }
+  }
+
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) {
+    return fallbackKeywords(theorem, assumptions, researchField);
+  }
+
+  try {
+    const genAI = new GoogleGenAI({ apiKey });
+    const response = await genAI.models.generateContent({
+      model: model.startsWith('gemini-') ? model : 'gemini-2.5-flash',
+      contents: prompt,
+    });
+    const text = (response.text || '').replace(/\n+/g, ' ').trim();
+    return text || fallbackKeywords(theorem, assumptions, researchField);
+  } catch (error) {
+    console.warn('Gemini keyword extraction failed, using fallback keywords:', error);
+    return fallbackKeywords(theorem, assumptions, researchField);
+  }
+}
+
 export default async function handler(req: any, res: any) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
@@ -143,20 +236,46 @@ export default async function handler(req: any, res: any) {
 
   const theorem = typeof req.body?.theorem === 'string' ? req.body.theorem.trim() : '';
   const assumptions = typeof req.body?.assumptions === 'string' ? req.body.assumptions.trim() : '';
+  const researchField = typeof req.body?.researchField === 'string' ? req.body.researchField.trim() : '';
+  const manualKeywords = typeof req.body?.keywords === 'string' ? req.body.keywords.trim() : '';
+  const requestedModel = typeof req.body?.model === 'string' ? req.body.model.trim() : 'gemini-2.5-flash';
+  const keywordProvider = inferProviderFromModel(requestedModel);
 
-  const query = [theorem, assumptions].filter(Boolean).join(' ').slice(0, 500);
-  if (!query) {
-    return res.status(200).json({ literature: [] });
+  const baseQuery = [theorem, assumptions, researchField].filter(Boolean).join(' ').slice(0, 500);
+  if (!baseQuery) {
+    return res.status(200).json({
+      literature: [],
+      keywords: {
+        suggested: '',
+        used: '',
+        source: 'fallback',
+      } satisfies KeywordExtractionResult,
+    });
   }
 
   try {
+    const suggestedKeywords = await extractKeywordsWithAI(theorem, assumptions, researchField, requestedModel);
+    const usedKeywords = manualKeywords || suggestedKeywords;
+    const query = [usedKeywords, researchField].filter(Boolean).join(' ').slice(0, 500);
+
     const [arxivMatches, crossrefMatches] = await Promise.all([
       searchArxiv(query, 6),
       searchCrossref(query, 6),
     ]);
 
     const literature = dedupeAndRank([...arxivMatches, ...crossrefMatches], 8);
-    return res.status(200).json({ literature });
+    return res.status(200).json({
+      literature,
+      keywords: {
+        suggested: suggestedKeywords,
+        used: usedKeywords,
+        source: manualKeywords
+          ? 'manual'
+          : (keywordProvider === 'deepseek' ? !!process.env.DEEPSEEK_API_KEY : !!process.env.GEMINI_API_KEY)
+            ? 'ai'
+            : 'fallback',
+      } satisfies KeywordExtractionResult,
+    });
   } catch (error) {
     console.error('Literature search failed:', error);
     return res.status(502).json({ error: 'Literature search provider unavailable.' });
