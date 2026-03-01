@@ -10,6 +10,30 @@ interface VerifyPayload {
   riskLevel?: 'low' | 'medium' | 'high';
 }
 
+function extractGeminiErrorDetails(error: unknown) {
+  const fallback = 'Gemini verification failed.';
+  if (!error || typeof error !== 'object') {
+    return fallback;
+  }
+
+  const status = typeof (error as { status?: unknown }).status === 'number'
+    ? (error as { status: number }).status
+    : undefined;
+  const message = typeof (error as { message?: unknown }).message === 'string'
+    ? (error as { message: string }).message
+    : fallback;
+  const nested = (error as { error?: { message?: unknown; status?: unknown } }).error;
+  const nestedMessage = nested && typeof nested.message === 'string' ? nested.message : undefined;
+  const nestedStatus = nested && typeof nested.status === 'string' ? nested.status : undefined;
+
+  return [
+    message,
+    status ? `(HTTP ${status})` : undefined,
+    nestedStatus ? `status=${nestedStatus}` : undefined,
+    nestedMessage ? `detail=${nestedMessage}` : undefined,
+  ].filter(Boolean).join(' ');
+}
+
 function parseVerifierPayload(rawText: string): VerifyPayload {
   const cleaned = rawText.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
   const start = cleaned.indexOf('{');
@@ -75,6 +99,6 @@ Rules:
     return res.status(200).json(payload);
   } catch (error) {
     console.error(error);
-    return res.status(500).json({ error: 'Gemini verification failed.' });
+    return res.status(500).json({ error: extractGeminiErrorDetails(error) });
   }
 }
