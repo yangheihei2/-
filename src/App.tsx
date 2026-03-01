@@ -140,6 +140,10 @@ function isNetworkFetchError(error: unknown) {
   return error instanceof TypeError && /failed to fetch|networkerror|load failed/i.test(error.message);
 }
 
+function isAbortTimeoutError(error: unknown) {
+  return error instanceof DOMException && error.name === 'AbortError';
+}
+
 function normalizeForMathJax(content: string) {
   return content
     .replace(/```latex\n?/g, '')
@@ -326,8 +330,9 @@ export default function App() {
       fallbackError: string;
       maxRetries?: number;
       retryOnHttp?: boolean;
+      requestTimeoutMs?: number;
     }) => {
-      const { stage, endpoint, body, fallbackError, maxRetries = 2, retryOnHttp = true } = params;
+      const { stage, endpoint, body, fallbackError, maxRetries = 2, retryOnHttp = true, requestTimeoutMs = 90000 } = params;
       pipelineStage = stage;
 
       let response: Response | null = null;
@@ -337,11 +342,15 @@ export default function App() {
 
       for (let attempt = 0; attempt <= maxRetries; attempt += 1) {
         try {
+          const controller = new AbortController();
+          const timeoutId = window.setTimeout(() => controller.abort(), requestTimeoutMs);
           response = await fetch(endpoint, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(body),
+            signal: controller.signal,
           });
+          window.clearTimeout(timeoutId);
 
           rawText = await response.text();
           try {
@@ -364,10 +373,19 @@ export default function App() {
           return parsedBody as T;
         } catch (error) {
           lastError = error;
-          if (!isNetworkFetchError(error) || attempt >= maxRetries) {
+          const retryableNetworkError = isNetworkFetchError(error) || isAbortTimeoutError(error);
+          if (!retryableNetworkError || attempt >= maxRetries) {
+            if (isAbortTimeoutError(error)) {
+              throw new Error(`Request timed out after ${Math.round(requestTimeoutMs / 1000)}s.`);
+            }
             throw error;
           }
-          addLog(`${stage} API temporarily unreachable, retrying (${attempt + 1}/${maxRetries})...`, 'warning');
+
+          if (isAbortTimeoutError(error)) {
+            addLog(`${stage} API timed out after ${Math.round(requestTimeoutMs / 1000)}s, retrying (${attempt + 1}/${maxRetries})...`, 'warning');
+          } else {
+            addLog(`${stage} API temporarily unreachable, retrying (${attempt + 1}/${maxRetries})...`, 'warning');
+          }
           await new Promise((resolve) => setTimeout(resolve, 1000 * (attempt + 1)));
         }
       }
@@ -376,45 +394,19 @@ export default function App() {
     };
 
     const fetchProof = async () => {
-      const payload = { theorem, assumptions, model: selectedModelOption.id };
+      const proofData = await requestJsonWithRetry<GenerateProofResponse>({
+        stage: 'candidate proof generation',
+        endpoint: selectedModelOption.apiPath,
+        body: { theorem, assumptions, model: selectedModelOption.id },
+        fallbackError: 'Failed to generate proof.',
+        maxRetries: 2,
+        retryOnHttp: true,
+        requestTimeoutMs: selectedModelOption.provider === 'deepseek' ? 130000 : 90000,
+      });
 
-      try {
-        const proofData = await requestJsonWithRetry<GenerateProofResponse>({
-          stage: 'candidate proof generation',
-          endpoint: selectedModelOption.apiPath,
-          body: payload,
-          fallbackError: 'Failed to generate proof.',
-          maxRetries: 2,
-          retryOnHttp: true,
-        });
-
-        const candidate = typeof proofData.proof === 'string' ? proofData.proof.trim() : '';
-        if (!candidate) {
-          throw new Error('Generator returned an empty proof. This usually indicates an upstream model timeout or empty response.');
-        }
-        return candidate;
-      } catch (error) {
-        const isDeepSeek = selectedModelOption.provider === 'deepseek';
-        if (!isDeepSeek) {
-          throw error;
-        }
-
-        addLog('DeepSeek generation failed, attempting Gemini fallback for this run...', 'warning');
-        const fallbackProof = await requestJsonWithRetry<GenerateProofResponse>({
-          stage: 'candidate proof generation',
-          endpoint: '/api/generate-proof',
-          body: { theorem, assumptions, model: 'gemini-2.5-flash' },
-          fallbackError: 'Failed to generate proof via fallback model.',
-          maxRetries: 1,
-          retryOnHttp: true,
-        });
-
-        const candidate = typeof fallbackProof.proof === 'string' ? fallbackProof.proof.trim() : '';
-        if (!candidate) {
-          throw new Error('Fallback generator returned an empty proof.');
-        }
-        addLog('Fallback to Gemini succeeded.', 'success');
-        return candidate;
+      const candidate = typeof proofData.proof === 'string' ? proofData.proof.trim() : '';
+      if (!candidate) {
+        throw new Error('Generator returned an empty proof. This usually indicates an upstream model timeout or empty response.');
       }
     };
 
@@ -451,6 +443,7 @@ export default function App() {
           fallbackError: 'Idea generation failed.',
           maxRetries: 1,
           retryOnHttp: true,
+          requestTimeoutMs: selectedModelOption.provider === 'deepseek' ? 100000 : 60000,
         });
         setPossibleIdeas(Array.isArray(ideasData.ideas) ? ideasData.ideas : []);
         setCandidateTheorems(Array.isArray(ideasData.candidateTheorems) ? ideasData.candidateTheorems : []);
