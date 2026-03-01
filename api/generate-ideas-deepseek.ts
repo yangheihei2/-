@@ -1,4 +1,4 @@
-import { callDeepSeek } from './deepseek-client.js';
+import { callDeepSeek } from '../lib/deepseek-client.js';
 
 const defaultModel = 'deepseek-chat';
 const allowedModels = new Set(['deepseek-chat', 'deepseek-reasoner']);
