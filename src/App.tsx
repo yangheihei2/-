@@ -332,7 +332,7 @@ export default function App() {
       retryOnHttp?: boolean;
       requestTimeoutMs?: number;
     }) => {
-      const { stage, endpoint, body, fallbackError, maxRetries = 2, retryOnHttp = true, requestTimeoutMs = 90000 } = params;
+      const { stage, endpoint, body, fallbackError, maxRetries = 1, retryOnHttp = true, requestTimeoutMs = 80000 } = params;
       pipelineStage = stage;
 
       let response: Response | null = null;
@@ -341,16 +341,16 @@ export default function App() {
       let lastError: unknown = null;
 
       for (let attempt = 0; attempt <= maxRetries; attempt += 1) {
+        let timeoutId: number | null = null;
         try {
           const controller = new AbortController();
-          const timeoutId = window.setTimeout(() => controller.abort(), requestTimeoutMs);
+          timeoutId = window.setTimeout(() => controller.abort(), requestTimeoutMs);
           response = await fetch(endpoint, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(body),
             signal: controller.signal,
           });
-          window.clearTimeout(timeoutId);
 
           rawText = await response.text();
           try {
@@ -387,6 +387,10 @@ export default function App() {
             addLog(`${stage} API temporarily unreachable, retrying (${attempt + 1}/${maxRetries})...`, 'warning');
           }
           await new Promise((resolve) => setTimeout(resolve, 1000 * (attempt + 1)));
+        } finally {
+          if (timeoutId !== null) {
+            window.clearTimeout(timeoutId);
+          }
         }
       }
 
@@ -399,9 +403,9 @@ export default function App() {
         endpoint: selectedModelOption.apiPath,
         body: { theorem, assumptions, model: selectedModelOption.id },
         fallbackError: 'Failed to generate proof.',
-        maxRetries: 2,
+        maxRetries: 1,
         retryOnHttp: true,
-        requestTimeoutMs: selectedModelOption.provider === 'deepseek' ? 130000 : 90000,
+        requestTimeoutMs: selectedModelOption.provider === 'deepseek' ? 90000 : 70000,
       });
 
       const candidate = typeof proofData.proof === 'string' ? proofData.proof.trim() : '';
@@ -416,7 +420,7 @@ export default function App() {
         endpoint: verifyApiPath,
         body: { theorem, assumptions, proof: candidateProof, model: selectedModelOption.id },
         fallbackError: 'Proof verification failed.',
-        maxRetries: 2,
+        maxRetries: 1,
         retryOnHttp: true,
       });
       return verifyData;
@@ -428,7 +432,7 @@ export default function App() {
         endpoint: reviseApiPath,
         body: { theorem, assumptions, proof: candidateProof, feedback, model: selectedModelOption.id },
         fallbackError: 'Proof revision failed.',
-        maxRetries: 2,
+        maxRetries: 1,
         retryOnHttp: true,
       });
       return reviseData.revisedProof || candidateProof;
@@ -443,7 +447,7 @@ export default function App() {
           fallbackError: 'Idea generation failed.',
           maxRetries: 1,
           retryOnHttp: true,
-          requestTimeoutMs: selectedModelOption.provider === 'deepseek' ? 100000 : 60000,
+          requestTimeoutMs: selectedModelOption.provider === 'deepseek' ? 70000 : 50000,
         });
         setPossibleIdeas(Array.isArray(ideasData.ideas) ? ideasData.ideas : []);
         setCandidateTheorems(Array.isArray(ideasData.candidateTheorems) ? ideasData.candidateTheorems : []);
