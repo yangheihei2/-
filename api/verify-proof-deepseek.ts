@@ -1,4 +1,4 @@
-import { callDeepSeek } from './deepseek-client.js';
+import { callDeepSeek } from '../lib/server/deepseek-client.js';
 
 const defaultModel = 'deepseek-chat';
 const allowedModels = new Set(['deepseek-chat', 'deepseek-reasoner']);
@@ -16,7 +16,16 @@ function parseVerifierPayload(rawText: string): VerifyPayload {
   const start = cleaned.indexOf('{');
   const end = cleaned.lastIndexOf('}');
   const jsonText = start >= 0 && end > start ? cleaned.slice(start, end + 1) : cleaned;
-  const parsed = JSON.parse(jsonText);
+  const parseJsonWithBackslashFallback = (text: string) => {
+    try {
+      return JSON.parse(text);
+    } catch {
+      const escapedBackslashes = text.replace(/\\(?!["\\/bfnrtu])/g, '\\\\');
+      return JSON.parse(escapedBackslashes);
+    }
+  };
+
+  const parsed = parseJsonWithBackslashFallback(jsonText);
 
   const decision = parsed?.decision;
   const safeDecision: VerifierDecision = decision === 'PASS' || decision === 'MINOR_FIX' || decision === 'REGENERATE' ? decision : 'REGENERATE';

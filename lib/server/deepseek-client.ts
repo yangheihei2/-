@@ -1,16 +1,23 @@
 const DEEPSEEK_API_URL = 'https://api.deepseek.com/chat/completions';
-const REQUEST_TIMEOUT_MS_DEFAULT = 90000;
+const REQUEST_TIMEOUT_MS_DEFAULT = 120000;
 const MAX_RETRIES = 2;
-const REQUEST_TIMEOUT_MS_MIN = 5000;
-const REQUEST_TIMEOUT_MS_MAX = 180000;
+const RETRYABLE_STATUS_CODES = new Set([408, 409, 425, 429]);
+const REQUEST_TIMEOUT_MS_MIN = 30000;
+const REQUEST_TIMEOUT_MS_MAX = 300000;
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 
-function getRequestTimeoutMs() {
+function getRequestTimeoutMs(model: string) {
   const configured = Number(process.env.DEEPSEEK_REQUEST_TIMEOUT_MS || '');
-  if (!Number.isFinite(configured)) return REQUEST_TIMEOUT_MS_DEFAULT;
-  return Math.min(REQUEST_TIMEOUT_MS_MAX, Math.max(REQUEST_TIMEOUT_MS_MIN, Math.floor(configured)));
+  const baseTimeout = Number.isFinite(configured)
+    ? Math.floor(configured)
+    : REQUEST_TIMEOUT_MS_DEFAULT;
+
+  // reasoning model is typically slower; give it more headroom by default.
+  const withModelFactor = model === 'deepseek-reasoner' ? Math.floor(baseTimeout * 2) : baseTimeout;
+
+  return Math.min(REQUEST_TIMEOUT_MS_MAX, Math.max(REQUEST_TIMEOUT_MS_MIN, withModelFactor));
 }
 
 interface DeepSeekCallParams {
@@ -18,14 +25,23 @@ interface DeepSeekCallParams {
   model: string;
   messages: Array<{ role: 'user' | 'system' | 'assistant'; content: string }>;
   temperature?: number;
+  timeoutMs?: number;
+  maxRetries?: number;
 }
 
-export async function callDeepSeek({ apiKey, model, messages, temperature }: DeepSeekCallParams) {
+export async function callDeepSeek({ apiKey, model, messages, temperature, timeoutMs, maxRetries }: DeepSeekCallParams) {
   let lastError = 'DeepSeek request failed.';
 
-  for (let attempt = 0; attempt <= MAX_RETRIES; attempt += 1) {
+  const retryLimit = Number.isInteger(maxRetries) && (maxRetries as number) >= 0
+    ? Math.floor(maxRetries as number)
+    : MAX_RETRIES;
+
+  for (let attempt = 0; attempt <= retryLimit; attempt += 1) {
     const controller = new AbortController();
-    const requestTimeoutMs = getRequestTimeoutMs();
+    const defaultTimeoutMs = getRequestTimeoutMs(model);
+    const requestTimeoutMs = Number.isFinite(timeoutMs)
+      ? Math.min(REQUEST_TIMEOUT_MS_MAX, Math.max(REQUEST_TIMEOUT_MS_MIN, Math.floor(timeoutMs as number)))
+      : defaultTimeoutMs;
     const timeout = setTimeout(() => controller.abort(), requestTimeoutMs);
 
     try {
@@ -53,9 +69,9 @@ export async function callDeepSeek({ apiKey, model, messages, temperature }: Dee
 
       if (!response.ok) {
         lastError = `DeepSeek API error ${response.status}: ${rawText || 'No response body.'}`;
-        const shouldRetry = response.status === 408 || response.status === 429 || response.status >= 500;
-        if (shouldRetry && attempt < MAX_RETRIES) {
-          await sleep(600 * (attempt + 1));
+        const shouldRetry = RETRYABLE_STATUS_CODES.has(response.status) || response.status >= 500;
+        if (shouldRetry && attempt < retryLimit) {
+          await sleep(1000 * (attempt + 1));
           continue;
         }
         throw new Error(lastError);
@@ -70,8 +86,8 @@ export async function callDeepSeek({ apiKey, model, messages, temperature }: Dee
         lastError = error instanceof Error ? error.message : 'Unknown DeepSeek request error.';
       }
 
-      if (attempt < MAX_RETRIES) {
-        await sleep(600 * (attempt + 1));
+      if (attempt < retryLimit) {
+        await sleep(1000 * (attempt + 1));
         continue;
       }
 

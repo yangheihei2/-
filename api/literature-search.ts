@@ -1,5 +1,5 @@
 import { GoogleGenAI } from '@google/genai';
-import { callDeepSeek } from './deepseek-client.js';
+import { callDeepSeek } from '../lib/server/deepseek-client.js';
 
 interface LiteratureMatch {
   title: string;
