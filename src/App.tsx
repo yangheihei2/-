@@ -308,6 +308,67 @@ export default function App() {
 
     const fetchProof = async () => {
       pipelineStage = 'candidate proof generation';
+
+      if (selectedModelOption.provider === 'deepseek') {
+        const startResponse = await fetch('/api/generate-proof-deepseek-start', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ theorem, assumptions, model: selectedModelOption.id }),
+        });
+
+        const startRawText = await startResponse.text();
+        let startBody: any = {};
+        try {
+          startBody = startRawText ? JSON.parse(startRawText) : {};
+        } catch {
+          startBody = {};
+        }
+
+        if (!startResponse.ok) {
+          throw new Error(parseApiError(startBody, 'Failed to start async proof generation job.', startResponse.status, startResponse.statusText, startRawText));
+        }
+
+        let token = typeof startBody?.token === 'string' ? startBody.token : '';
+        if (!token) {
+          throw new Error('Async proof generation did not return a valid job token.');
+        }
+
+        const maxPollRounds = 8;
+        for (let pollRound = 0; pollRound < maxPollRounds; pollRound += 1) {
+          const pollResponse = await fetch('/api/generate-proof-deepseek-poll', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ token }),
+          });
+
+          const pollRawText = await pollResponse.text();
+          let pollBody: any = {};
+          try {
+            pollBody = pollRawText ? JSON.parse(pollRawText) : {};
+          } catch {
+            pollBody = {};
+          }
+
+          if (pollResponse.status === 202 && pollBody?.status === 'in_progress' && typeof pollBody?.token === 'string') {
+            token = pollBody.token;
+            addLog(`DeepSeek async job progress: ${pollRound + 1}/${maxPollRounds} steps.`, 'info');
+            continue;
+          }
+
+          if (pollResponse.ok && pollBody?.status === 'completed') {
+            const candidate = typeof pollBody?.proof === 'string' ? pollBody.proof.trim() : '';
+            if (!candidate) {
+              throw new Error('Async generator completed but returned an empty proof.');
+            }
+            return candidate;
+          }
+
+          throw new Error(parseApiError(pollBody, 'Async proof generation failed.', pollResponse.status, pollResponse.statusText, pollRawText));
+        }
+
+        throw new Error('Async proof generation exceeded front-end poll limit. Please retry to continue remaining attempts.');
+      }
+
       const proofResponse = await fetch(selectedModelOption.apiPath, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
