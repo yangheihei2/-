@@ -76,62 +76,58 @@ export default async function handler(req: any, res: any) {
   }
 
   try {
-    const fallbackModel = model === 'deepseek-chat' ? 'deepseek-reasoner' : 'deepseek-chat';
-    const modelCandidates = [model, fallbackModel].filter((candidate, idx, arr) => arr.indexOf(candidate) === idx);
     const promptCandidates = [
       { type: 'full' as const, content: buildPrompt(theorem, assumptions, false) },
       { type: 'compact' as const, content: buildPrompt(theorem, assumptions, true) },
     ];
     const attempts: AttemptReport[] = [];
 
-    for (const candidateModel of modelCandidates) {
-      for (const promptCandidate of promptCandidates) {
-        try {
-          const data = await callDeepSeek({
-            apiKey,
-            model: candidateModel,
-            messages: [{ role: 'user', content: promptCandidate.content }],
-            temperature: 0.2,
-          });
+    for (const promptCandidate of promptCandidates) {
+      try {
+        const data = await callDeepSeek({
+          apiKey,
+          model,
+          messages: [{ role: 'user', content: promptCandidate.content }],
+          temperature: 0.2,
+        });
 
-          const proof = extractProofContent(data);
-          if (proof) {
-            attempts.push({
-              model: candidateModel,
-              promptType: promptCandidate.type,
-              status: 'ok',
-              detail: 'non-empty proof returned',
-            });
-            return res.status(200).json({
-              proof,
-              modelUsed: candidateModel,
-              compactPrompt: promptCandidate.type === 'compact',
-              attempts,
-            });
-          }
-
+        const proof = extractProofContent(data);
+        if (proof) {
           attempts.push({
-            model: candidateModel,
+            model,
             promptType: promptCandidate.type,
-            status: 'empty',
-            detail: 'API returned empty content',
+            status: 'ok',
+            detail: 'non-empty proof returned',
           });
-        } catch (error) {
-          const message = error instanceof Error ? error.message : 'Unknown DeepSeek request error.';
-          attempts.push({
-            model: candidateModel,
-            promptType: promptCandidate.type,
-            status: 'error',
-            detail: message,
+          return res.status(200).json({
+            proof,
+            modelUsed: model,
+            compactPrompt: promptCandidate.type === 'compact',
+            attempts,
           });
         }
+
+        attempts.push({
+          model,
+          promptType: promptCandidate.type,
+          status: 'empty',
+          detail: 'API returned empty content',
+        });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unknown DeepSeek request error.';
+        attempts.push({
+          model,
+          promptType: promptCandidate.type,
+          status: 'error',
+          detail: message,
+        });
       }
     }
 
     return res.status(502).json({
-      error: 'DeepSeek proof generation failed after all fallback attempts.',
-      errorCode: 'DEEPSEEK_GENERATION_ALL_ATTEMPTS_FAILED',
-      userHint: 'All retries and model fallbacks failed. Please retry later, or switch to Gemini to validate whether the input is fine.',
+      error: 'DeepSeek proof generation failed for the selected model after prompt fallbacks.',
+      errorCode: 'DEEPSEEK_GENERATION_SELECTED_MODEL_FAILED',
+      userHint: 'The selected DeepSeek model timed out or returned no content. Please retry with simpler assumptions or a shorter theorem statement.',
       summary: buildReadableSummary(attempts),
       attempts,
     });
