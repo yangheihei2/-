@@ -37,6 +37,7 @@ interface LiteratureMatch {
   source: string;
   score: number;
   tags: string[];
+  url?: string;
 }
 
 interface GenerateProofResponse {
@@ -134,44 +135,6 @@ function normalizeForMathJax(content: string) {
     .trim();
 }
 
-const LITERATURE_CORPUS: LiteratureMatch[] = [
-  {
-    title: 'Adaptive Thresholding with Finite-Sample Guarantees',
-    authors: 'L. Xu, M. Patel (2023)',
-    source: 'arXiv:2302.10211 [stat.ML]',
-    score: 0.98,
-    tags: ['Concentration Bounds', 'Order Statistics'],
-  },
-  {
-    title: 'Conformal Risk Control for Selective Classification',
-    authors: 'J. S. Park et al. (2022)',
-    source: 'NeurIPS',
-    score: 0.91,
-    tags: ['Selective Classification', 'Error Control'],
-  },
-  {
-    title: 'Almost Sure Convergence and Probability Limits',
-    authors: 'A. N. Shiryaev (2018)',
-    source: 'Probability-2 (Springer)',
-    score: 0.89,
-    tags: ['Convergence', 'Measure Theory'],
-  },
-  {
-    title: 'Empirical Bernstein Bounds and Confidence Sequences',
-    authors: 'H. Howard et al. (2021)',
-    source: 'Annals of Statistics',
-    score: 0.86,
-    tags: ['Concentration Bounds', 'Sequential Inference'],
-  },
-  {
-    title: 'The Extremum Value Theorem: A Metric Space Perspective',
-    authors: 'H. Miller, S. Grant (2022)',
-    source: 'arXiv:2104.0932 [math.CA]',
-    score: 0.72,
-    tags: ['Real Analysis', 'Compactness'],
-  },
-];
-
 export default function App() {
   const [theorem, setTheorem] = useState('');
   const [assumptions, setAssumptions] = useState('');
@@ -186,6 +149,8 @@ export default function App() {
   const [selectedModelId, setSelectedModelId] = useState('gemini-2.5-flash');
   const [possibleIdeas, setPossibleIdeas] = useState<string[]>([]);
   const [candidateTheorems, setCandidateTheorems] = useState<CandidateTheorem[]>([]);
+  const [literatureMatches, setLiteratureMatches] = useState<LiteratureMatch[]>([]);
+  const [isSearchingLiterature, setIsSearchingLiterature] = useState(false);
 
   const logEndRef = useRef<HTMLDivElement>(null);
   const proofRef = useRef<HTMLDivElement>(null);
@@ -194,43 +159,52 @@ export default function App() {
   const selectedModelOption = MODEL_OPTIONS.find((option) => option.id === selectedModelId) || MODEL_OPTIONS[0];
 
 
-  const literatureMatches = useMemo(() => {
-    const workspaceText = `${theorem} ${assumptions}`.toLowerCase().trim();
-
-    if (!workspaceText) return [];
-
-    const keywordGroups: Record<string, string[]> = {
-      'Concentration Bounds': ['hoeffding', 'bernstein', 'concentration', 'high probability', 'finite-sample'],
-      'Order Statistics': ['order statistic', 'quantile', 'threshold', 'k_i', 't_i', 't\\prime_i', 'rank'],
-      'Selective Classification': ['selective', 'reject option', 'classification', 'risk control'],
-      'Error Control': ['error', 'delta', 'bonferroni', 'union bound', 'confidence'],
-      Convergence: ['almost sure', 'a.s.', 'converge', 'convergence', 'probability limit'],
-      'Measure Theory': ['probability space', 'sigma', 'measure', 'random variable'],
-      'Sequential Inference': ['sequence', 'online', 'sequential'],
-      'Real Analysis': ['continuous', 'compact', 'closed interval', 'extreme value'],
-      Compactness: ['compactness', 'metric space'],
-    };
-
-    const dynamicMatches = LITERATURE_CORPUS.map((paper) => {
-      const hitCount = paper.tags.reduce((count, tag) => {
-        const keywords = keywordGroups[tag] || [];
-        const matched = keywords.some((keyword) => workspaceText.includes(keyword));
-        return count + (matched ? 1 : 0);
-      }, 0);
-
-      const adjustedScore = Math.min(0.99, paper.score + hitCount * 0.03);
-      return { ...paper, score: adjustedScore };
-    })
-      .sort((a, b) => b.score - a.score)
-      .slice(0, 4);
-
-    return dynamicMatches;
-  }, [theorem, assumptions]);
-
   const topReference = useMemo(
     () => [...literatureMatches].sort((a, b) => b.score - a.score)[0],
     [literatureMatches],
   );
+
+  useEffect(() => {
+    const query = `${theorem} ${assumptions}`.trim();
+    if (!query) {
+      setLiteratureMatches([]);
+      return;
+    }
+
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(async () => {
+      setIsSearchingLiterature(true);
+      try {
+        const response = await fetch('/api/literature-search', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ theorem, assumptions }),
+          signal: controller.signal,
+        });
+
+        if (!response.ok) {
+          throw new Error('Literature API unavailable');
+        }
+
+        const data = await response.json();
+        const matches = Array.isArray(data?.literature) ? data.literature : [];
+        setLiteratureMatches(matches.slice(0, 8));
+      } catch (error) {
+        if (error instanceof DOMException && error.name === 'AbortError') {
+          return;
+        }
+        addLog('Literature search failed (arXiv/Crossref). Continuing with proof generation.', 'warning');
+        setLiteratureMatches([]);
+      } finally {
+        setIsSearchingLiterature(false);
+      }
+    }, 450);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+      controller.abort();
+    };
+  }, [theorem, assumptions]);
 
   const addLog = (message: string, type: LogEntry['type'] = 'info') => {
     const now = new Date();
@@ -554,7 +528,7 @@ export default function App() {
               <h2 className="font-bold text-slate-900 flex items-center gap-2">
                 <BookOpen size={18} className="text-[#064e3b]" /> Literature Search
               </h2>
-              <span className="text-[10px] px-2 py-0.5 bg-emerald-50 text-emerald-700 rounded-full font-bold border border-emerald-100">{literatureMatches.length} MATCHES</span>
+              <span className="text-[10px] px-2 py-0.5 bg-emerald-50 text-emerald-700 rounded-full font-bold border border-emerald-100">{isSearchingLiterature ? 'SEARCHING…' : `${literatureMatches.length} MATCHES`}</span>
             </div>
 
             <div className="relative mb-6">
@@ -576,6 +550,16 @@ export default function App() {
                     <span className="text-[10px] font-mono font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-100">{match.score.toFixed(2)}</span>
                   </div>
                   <p className="text-xs text-slate-500 mb-3">{match.authors} • {match.source}</p>
+                  {match.url && (
+                    <a
+                      href={match.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex items-center gap-1 text-[11px] text-emerald-700 hover:text-emerald-800 mb-2"
+                    >
+                      View source <ExternalLink size={12} />
+                    </a>
+                  )}
                   <div className="flex gap-2">
                     {match.tags.map((tag) => (
                       <span key={tag} className="text-[9px] px-1.5 py-0.5 bg-slate-100 text-slate-500 rounded font-bold uppercase tracking-wider">{tag}</span>
