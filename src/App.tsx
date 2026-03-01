@@ -408,7 +408,6 @@ export default function App() {
       if (!candidate) {
         throw new Error('Generator returned an empty proof. This usually indicates an upstream model timeout or empty response.');
       }
-      return candidate;
     };
 
     const verifyProof = async (candidateProof: string) => {
