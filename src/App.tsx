@@ -124,7 +124,24 @@ function buildPipelineErrorMessage(stage: string, rawError: string) {
   };
 
   const displayStage = stageMap[stage] || stage;
+
+  if (/failed to fetch|networkerror|load failed/i.test(rawError)) {
+    return `Pipeline failed during ${displayStage}: Unable to reach the API service. Please retry in a moment, and ensure your backend is running and network is available.`;
+  }
+
+  if (/timed out|timeout/i.test(rawError)) {
+    return `Pipeline failed during ${displayStage}: The API request timed out. Please retry, or switch to a faster model if the issue persists.`;
+  }
+
   return `Pipeline failed during ${displayStage}: ${rawError}`;
+}
+
+function isNetworkFetchError(error: unknown) {
+  return error instanceof TypeError && /failed to fetch|networkerror|load failed/i.test(error.message);
+}
+
+function isAbortTimeoutError(error: unknown) {
+  return error instanceof DOMException && error.name === 'AbortError';
 }
 
 function normalizeForMathJax(content: string) {
@@ -167,6 +184,14 @@ export default function App() {
 
   const selectedModelOption = MODEL_OPTIONS.find((option) => option.id === selectedModelId) || MODEL_OPTIONS[0];
 
+  const isReasonerModel = selectedModelOption.id === 'deepseek-reasoner';
+  const pipelineTimeouts = useMemo(() => ({
+    requestDefault: isReasonerModel ? 100000 : selectedModelOption.provider === 'deepseek' ? 80000 : 70000,
+    ideas: isReasonerModel ? 110000 : selectedModelOption.provider === 'deepseek' ? 70000 : 50000,
+    proof: isReasonerModel ? 140000 : selectedModelOption.provider === 'deepseek' ? 90000 : 70000,
+    verify: isReasonerModel ? 100000 : 80000,
+    revise: isReasonerModel ? 100000 : 80000,
+  }), [isReasonerModel, selectedModelOption.provider]);
 
   const topReference = useMemo(
     () => [...literatureMatches].sort((a, b) => b.score - a.score)[0],
@@ -306,28 +331,91 @@ export default function App() {
       return `${headline}${code}.${http}${hint}${summary}${attemptText}${raw}`.trim();
     };
 
+    const requestJsonWithRetry = async <T,>(params: {
+      stage: string;
+      endpoint: string;
+      body: Record<string, unknown>;
+      fallbackError: string;
+      maxRetries?: number;
+      retryOnHttp?: boolean;
+      requestTimeoutMs?: number;
+    }) => {
+      const { stage, endpoint, body, fallbackError, maxRetries = 1, retryOnHttp = true, requestTimeoutMs = pipelineTimeouts.requestDefault } = params;
+      pipelineStage = stage;
+
+      let response: Response | null = null;
+      let rawText = '';
+      let parsedBody: unknown = {};
+      let lastError: unknown = null;
+
+      for (let attempt = 0; attempt <= maxRetries; attempt += 1) {
+        let timeoutId: number | null = null;
+        try {
+          const controller = new AbortController();
+          timeoutId = window.setTimeout(() => controller.abort(), requestTimeoutMs);
+          response = await fetch(endpoint, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+            signal: controller.signal,
+          });
+
+          rawText = await response.text();
+          try {
+            parsedBody = rawText ? JSON.parse(rawText) : {};
+          } catch {
+            parsedBody = {};
+          }
+
+          if (!response.ok) {
+            const canRetryHttp = retryOnHttp && (response.status >= 500 || response.status === 429 || response.status === 408);
+            if (canRetryHttp && attempt < maxRetries) {
+              addLog(`${stage} API returned ${response.status}, retrying (${attempt + 1}/${maxRetries})...`, 'warning');
+              await new Promise((resolve) => setTimeout(resolve, 1000 * (attempt + 1)));
+              continue;
+            }
+            const bodyPayload = parsedBody as ApiErrorPayload;
+            throw new Error(parseApiError(bodyPayload, fallbackError, response.status, response.statusText, rawText));
+          }
+
+          return parsedBody as T;
+        } catch (error) {
+          lastError = error;
+          const retryableNetworkError = isNetworkFetchError(error) || isAbortTimeoutError(error);
+          if (!retryableNetworkError || attempt >= maxRetries) {
+            if (isAbortTimeoutError(error)) {
+              throw new Error(`Request timed out after ${Math.round(requestTimeoutMs / 1000)}s.`);
+            }
+            throw error;
+          }
+
+          if (isAbortTimeoutError(error)) {
+            addLog(`${stage} API timed out after ${Math.round(requestTimeoutMs / 1000)}s, retrying (${attempt + 1}/${maxRetries})...`, 'warning');
+          } else {
+            addLog(`${stage} API temporarily unreachable, retrying (${attempt + 1}/${maxRetries})...`, 'warning');
+          }
+          await new Promise((resolve) => setTimeout(resolve, 1000 * (attempt + 1)));
+        } finally {
+          if (timeoutId !== null) {
+            window.clearTimeout(timeoutId);
+          }
+        }
+      }
+
+      throw new Error(lastError instanceof Error ? lastError.message : fallbackError);
+    };
+
     const fetchProof = async () => {
-      pipelineStage = 'candidate proof generation';
-      const proofResponse = await fetch(selectedModelOption.apiPath, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ theorem, assumptions, model: selectedModelOption.id }),
+      const proofData = await requestJsonWithRetry<GenerateProofResponse>({
+        stage: 'candidate proof generation',
+        endpoint: selectedModelOption.apiPath,
+        body: { theorem, assumptions, model: selectedModelOption.id },
+        fallbackError: 'Failed to generate proof.',
+        maxRetries: 1,
+        retryOnHttp: true,
+        requestTimeoutMs: pipelineTimeouts.proof,
       });
 
-      const rawText = await proofResponse.text();
-      let parsedBody: ApiErrorPayload | GenerateProofResponse = {};
-      try {
-        parsedBody = rawText ? JSON.parse(rawText) : {};
-      } catch {
-        parsedBody = {};
-      }
-
-      if (!proofResponse.ok) {
-        const body = parsedBody as ApiErrorPayload;
-        throw new Error(parseApiError(body, 'Failed to generate proof.', proofResponse.status, proofResponse.statusText, rawText));
-      }
-
-      const proofData = parsedBody as GenerateProofResponse;
       const candidate = typeof proofData.proof === 'string' ? proofData.proof.trim() : '';
       if (!candidate) {
         throw new Error('Generator returned an empty proof. This usually indicates an upstream model timeout or empty response.');
@@ -336,53 +424,46 @@ export default function App() {
     };
 
     const verifyProof = async (candidateProof: string) => {
-      pipelineStage = 'proof verification';
-      const verifyResponse = await fetch(verifyApiPath, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ theorem, assumptions, proof: candidateProof, model: selectedModelOption.id }),
+      const verifyData = await requestJsonWithRetry<VerifyProofResponse>({
+        stage: 'proof verification',
+        endpoint: verifyApiPath,
+        body: { theorem, assumptions, proof: candidateProof, model: selectedModelOption.id },
+        fallbackError: 'Proof verification failed.',
+        maxRetries: 1,
+        retryOnHttp: true,
+        requestTimeoutMs: pipelineTimeouts.verify,
       });
-
-      if (!verifyResponse.ok) {
-        const body = await verifyResponse.json().catch(() => ({}));
-        throw new Error(body.error || 'Proof verification failed.');
-      }
-
-      const verifyData: VerifyProofResponse = await verifyResponse.json();
       return verifyData;
     };
 
     const reviseProof = async (candidateProof: string, feedback: string) => {
-      pipelineStage = 'proof revision';
-      const reviseResponse = await fetch(reviseApiPath, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ theorem, assumptions, proof: candidateProof, feedback, model: selectedModelOption.id }),
+      const reviseData = await requestJsonWithRetry<ReviseProofResponse>({
+        stage: 'proof revision',
+        endpoint: reviseApiPath,
+        body: { theorem, assumptions, proof: candidateProof, feedback, model: selectedModelOption.id },
+        fallbackError: 'Proof revision failed.',
+        maxRetries: 1,
+        retryOnHttp: true,
+        requestTimeoutMs: pipelineTimeouts.revise,
       });
-
-      if (!reviseResponse.ok) {
-        const body = await reviseResponse.json().catch(() => ({}));
-        throw new Error(body.error || 'Proof revision failed.');
-      }
-
-      const reviseData: ReviseProofResponse = await reviseResponse.json();
       return reviseData.revisedProof || candidateProof;
     };
 
     try {
-      pipelineStage = 'idea brainstorming';
-      const ideasResponse = await fetch(selectedModelOption.ideasApiPath, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ theorem, assumptions, literature: literatureMatches, model: selectedModelOption.id }),
-      });
-
-      if (ideasResponse.ok) {
-        const ideasData: GenerateIdeasResponse = await ideasResponse.json();
+      try {
+        const ideasData = await requestJsonWithRetry<GenerateIdeasResponse>({
+          stage: 'idea brainstorming',
+          endpoint: selectedModelOption.ideasApiPath,
+          body: { theorem, assumptions, literature: literatureMatches, model: selectedModelOption.id },
+          fallbackError: 'Idea generation failed.',
+          maxRetries: 1,
+          retryOnHttp: true,
+          requestTimeoutMs: pipelineTimeouts.ideas,
+        });
         setPossibleIdeas(Array.isArray(ideasData.ideas) ? ideasData.ideas : []);
         setCandidateTheorems(Array.isArray(ideasData.candidateTheorems) ? ideasData.candidateTheorems : []);
         addLog('Generator brainstormed proof ideas and candidate theorems.', 'success');
-      } else {
+      } catch {
         addLog('Idea generation failed, continuing with proof pipeline.', 'warning');
       }
 

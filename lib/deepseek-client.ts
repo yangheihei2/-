@@ -1,6 +1,6 @@
 const DEEPSEEK_API_URL = 'https://api.deepseek.com/chat/completions';
-const REQUEST_TIMEOUT_MS_DEFAULT = 120000;
-const MAX_RETRIES = 2;
+const REQUEST_TIMEOUT_MS_DEFAULT = 90000;
+const MAX_RETRIES = 1;
 const RETRYABLE_STATUS_CODES = new Set([408, 409, 425, 429]);
 const REQUEST_TIMEOUT_MS_MIN = 30000;
 const REQUEST_TIMEOUT_MS_MAX = 300000;
@@ -15,7 +15,7 @@ function getRequestTimeoutMs(model: string) {
     : REQUEST_TIMEOUT_MS_DEFAULT;
 
   // reasoning model is typically slower; give it more headroom by default.
-  const withModelFactor = model === 'deepseek-reasoner' ? Math.floor(baseTimeout * 2) : baseTimeout;
+  const withModelFactor = model === 'deepseek-reasoner' ? Math.floor(baseTimeout * 1.5) : baseTimeout;
 
   return Math.min(REQUEST_TIMEOUT_MS_MAX, Math.max(REQUEST_TIMEOUT_MS_MIN, withModelFactor));
 }
