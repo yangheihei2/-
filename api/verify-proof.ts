@@ -10,6 +10,35 @@ interface VerifyPayload {
   riskLevel?: 'low' | 'medium' | 'high';
 }
 
+function normalizeBody(rawBody: unknown): Record<string, unknown> {
+  if (rawBody && typeof rawBody === 'object') {
+    return rawBody as Record<string, unknown>;
+  }
+
+  if (typeof rawBody === 'string') {
+    try {
+      const parsed = JSON.parse(rawBody);
+      if (parsed && typeof parsed === 'object') {
+        return parsed as Record<string, unknown>;
+      }
+    } catch {
+      return {};
+    }
+  }
+
+  return {};
+}
+
+function firstString(body: Record<string, unknown>, keys: string[]): string {
+  for (const key of keys) {
+    const value = body[key];
+    if (typeof value === 'string') {
+      return value;
+    }
+  }
+  return '';
+}
+
 function extractGeminiErrorDetails(error: unknown) {
   const fallback = 'Gemini verification failed.';
   if (!error || typeof error !== 'object') {
@@ -70,22 +99,11 @@ export default async function handler(req: any, res: any) {
     return res.status(500).json({ error: 'Server env GEMINI_API_KEY is not configured.' });
   }
 
-  const theorem = typeof req.body?.theorem === 'string'
-    ? req.body.theorem
-    : typeof req.body?.theoremStatement === 'string'
-      ? req.body.theoremStatement
-      : typeof req.body?.statement === 'string'
-        ? req.body.statement
-        : '';
-  const assumptions = typeof req.body?.assumptions === 'string' ? req.body.assumptions : '';
-  const proof = typeof req.body?.proof === 'string'
-    ? req.body.proof
-    : typeof req.body?.candidateProof === 'string'
-      ? req.body.candidateProof
-      : typeof req.body?.draftProof === 'string'
-        ? req.body.draftProof
-        : '';
-  const requestedModel = typeof req.body?.model === 'string' ? req.body.model : defaultModel;
+  const body = normalizeBody(req.body);
+  const theorem = firstString(body, ['theorem', 'theoremStatement', 'statement', 'theorem_statement']);
+  const assumptions = firstString(body, ['assumptions']);
+  const proof = firstString(body, ['proof', 'candidateProof', 'draftProof', 'candidate_proof', 'draft_proof']);
+  const requestedModel = firstString(body, ['model']) || defaultModel;
   const model = requestedModel.startsWith('gemini-') ? requestedModel : defaultModel;
 
   const missingFields = [
