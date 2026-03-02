@@ -340,7 +340,11 @@ export default function App() {
       retryOnHttp?: boolean;
       requestTimeoutMs?: number;
     }) => {
+<<<<<<< codex/provide-modification-plan-for-approval-mg1693
       const { stage, endpoint, body, fallbackError, maxRetries = 1, retryOnHttp = true, requestTimeoutMs = pipelineTimeouts.requestDefault } = params;
+=======
+      const { stage, endpoint, body, fallbackError, maxRetries = 1, retryOnHttp = true, requestTimeoutMs = 80000 } = params;
+>>>>>>> main
       pipelineStage = stage;
 
       let response: Response | null = null;
@@ -413,14 +417,17 @@ export default function App() {
         fallbackError: 'Failed to generate proof.',
         maxRetries: 1,
         retryOnHttp: true,
+<<<<<<< codex/provide-modification-plan-for-approval-mg1693
         requestTimeoutMs: pipelineTimeouts.proof,
+=======
+        requestTimeoutMs: selectedModelOption.provider === 'deepseek' ? 90000 : 70000,
+>>>>>>> main
       });
 
       const candidate = typeof proofData.proof === 'string' ? proofData.proof.trim() : '';
       if (!candidate) {
         throw new Error('Generator returned an empty proof. This usually indicates an upstream model timeout or empty response.');
       }
-      return candidate;
     };
 
     const verifyProof = async (candidateProof: string) => {
@@ -431,7 +438,10 @@ export default function App() {
         fallbackError: 'Proof verification failed.',
         maxRetries: 1,
         retryOnHttp: true,
+<<<<<<< codex/provide-modification-plan-for-approval-mg1693
         requestTimeoutMs: pipelineTimeouts.verify,
+=======
+>>>>>>> main
       });
       return verifyData;
     };
@@ -444,7 +454,10 @@ export default function App() {
         fallbackError: 'Proof revision failed.',
         maxRetries: 1,
         retryOnHttp: true,
+<<<<<<< codex/provide-modification-plan-for-approval-mg1693
         requestTimeoutMs: pipelineTimeouts.revise,
+=======
+>>>>>>> main
       });
       return reviseData.revisedProof || candidateProof;
     };
@@ -458,7 +471,11 @@ export default function App() {
           fallbackError: 'Idea generation failed.',
           maxRetries: 1,
           retryOnHttp: true,
+<<<<<<< codex/provide-modification-plan-for-approval-mg1693
           requestTimeoutMs: pipelineTimeouts.ideas,
+=======
+          requestTimeoutMs: selectedModelOption.provider === 'deepseek' ? 70000 : 50000,
+>>>>>>> main
         });
         setPossibleIdeas(Array.isArray(ideasData.ideas) ? ideasData.ideas : []);
         setCandidateTheorems(Array.isArray(ideasData.candidateTheorems) ? ideasData.candidateTheorems : []);
