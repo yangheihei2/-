@@ -12,10 +12,11 @@ interface AttemptReport {
   detail: string;
 }
 
-function buildPrompt(theorem: string, assumptions: string, compact = false) {
+function buildPrompt(theorem: string, assumptions: string, knowledgeReferences: unknown[], compact = false) {
   const base = `You are a mathematical proof assistant.
 Theorem: ${theorem}
 Assumptions: ${assumptions}
+Knowledge-base references (weighted): ${JSON.stringify(knowledgeReferences)}
 
 Return a proof that can be directly rendered by MathJax in a web page.
 Requirements:
@@ -32,6 +33,7 @@ Requirements:
   return `Provide a concise, rigorous proof in MathJax-friendly text only.
 Theorem: ${theorem}
 Assumptions: ${assumptions || '(none)'}
+Knowledge-base references (weighted): ${JSON.stringify(knowledgeReferences)}
 Use sections: Theorem, Proof, Conclusion.
 No markdown code fences or full LaTeX preamble.`;
 }
@@ -70,6 +72,7 @@ export default async function handler(req: any, res: any) {
   const assumptions = typeof req.body?.assumptions === 'string' ? req.body.assumptions : '';
   const requestedModel = typeof req.body?.model === 'string' ? req.body.model : defaultModel;
   const model = allowedModels.has(requestedModel) ? requestedModel : defaultModel;
+  const knowledgeReferences = Array.isArray(req.body?.knowledgeReferences) ? req.body.knowledgeReferences : [];
 
   if (!theorem.trim()) {
     return res.status(400).json({ error: 'Theorem is required.' });
@@ -77,8 +80,8 @@ export default async function handler(req: any, res: any) {
 
   try {
     const promptCandidates = [
-      { type: 'full' as const, content: buildPrompt(theorem, assumptions, false) },
-      { type: 'compact' as const, content: buildPrompt(theorem, assumptions, true) },
+      { type: 'full' as const, content: buildPrompt(theorem, assumptions, knowledgeReferences, false) },
+      { type: 'compact' as const, content: buildPrompt(theorem, assumptions, knowledgeReferences, true) },
     ];
     const attempts: AttemptReport[] = [];
 
