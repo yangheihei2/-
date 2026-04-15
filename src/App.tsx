@@ -172,6 +172,7 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<'formatted' | 'source'>('formatted');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [selectedModelId, setSelectedModelId] = useState('gemini-2.5-flash');
+  const [kbSelectedModelId, setKbSelectedModelId] = useState('deepseek-chat');
   const [possibleIdeas, setPossibleIdeas] = useState<string[]>([]);
   const [candidateTheorems, setCandidateTheorems] = useState<CandidateTheorem[]>([]);
   const [literatureMatches, setLiteratureMatches] = useState<LiteratureMatch[]>([]);
@@ -186,7 +187,11 @@ export default function App() {
   const proofRef = useRef<HTMLDivElement>(null);
   const ideasRef = useRef<HTMLDivElement>(null);
 
-  const selectedModelOption = MODEL_OPTIONS.find((option) => option.id === selectedModelId) || MODEL_OPTIONS[0];
+  const resolveModelOption = (modelId: string) =>
+    MODEL_OPTIONS.find((option) => option.id === modelId) || MODEL_OPTIONS[0];
+  const selectedModelOption = resolveModelOption(selectedModelId);
+  const kbModelOptions = MODEL_OPTIONS.filter((option) => option.provider === 'deepseek');
+  const selectedKbModelOption = resolveModelOption(kbSelectedModelId);
 
 
   const topReference = useMemo(
@@ -350,19 +355,20 @@ export default function App() {
     }
   };
 
-  const handleGenerate = async () => {
+  const handleGenerate = async (overrideModelId?: string) => {
     if (isGenerating) return;
 
+    const modelOption = resolveModelOption(overrideModelId || selectedModelId);
     setIsGenerating(true);
     setProof(null);
     setErrorMessage(null);
     setPossibleIdeas([]);
     setCandidateTheorems([]);
     setProgress(1);
-    addLog(`Generator initialized with ${selectedModelOption.label}.`, 'info');
+    addLog(`Generator initialized with ${modelOption.label}.`, 'info');
 
-    const verifyApiPath = selectedModelOption.provider === 'gemini' ? '/api/verify-proof' : '/api/verify-proof-deepseek';
-    const reviseApiPath = selectedModelOption.provider === 'gemini' ? '/api/revise-proof' : '/api/revise-proof-deepseek';
+    const verifyApiPath = modelOption.provider === 'gemini' ? '/api/verify-proof' : '/api/verify-proof-deepseek';
+    const reviseApiPath = modelOption.provider === 'gemini' ? '/api/revise-proof' : '/api/revise-proof-deepseek';
 
     const maxMinorFixRounds = 3;
     const maxRegenerateRounds = 2;
@@ -467,12 +473,12 @@ export default function App() {
     const fetchProof = async () => {
       const proofData = await requestJsonWithRetry<GenerateProofResponse>({
         stage: 'candidate proof generation',
-        endpoint: selectedModelOption.apiPath,
-        body: { theorem, assumptions, knowledgeReferences: rankedKnowledgeReferences, model: selectedModelOption.id },
+        endpoint: modelOption.apiPath,
+        body: { theorem, assumptions, knowledgeReferences: rankedKnowledgeReferences, model: modelOption.id },
         fallbackError: 'Failed to generate proof.',
         maxRetries: 1,
         retryOnHttp: true,
-        requestTimeoutMs: selectedModelOption.provider === 'deepseek' ? 90000 : 70000,
+        requestTimeoutMs: modelOption.provider === 'deepseek' ? 90000 : 70000,
       });
 
       const candidate = typeof proofData.proof === 'string' ? proofData.proof.trim() : '';
@@ -486,7 +492,7 @@ export default function App() {
       const verifyData = await requestJsonWithRetry<VerifyProofResponse>({
         stage: 'proof verification',
         endpoint: verifyApiPath,
-        body: { theorem, assumptions, proof: candidateProof, model: selectedModelOption.id },
+        body: { theorem, assumptions, proof: candidateProof, model: modelOption.id },
         fallbackError: 'Proof verification failed.',
         maxRetries: 1,
         retryOnHttp: true,
@@ -498,7 +504,7 @@ export default function App() {
       const reviseData = await requestJsonWithRetry<ReviseProofResponse>({
         stage: 'proof revision',
         endpoint: reviseApiPath,
-        body: { theorem, assumptions, proof: candidateProof, feedback, model: selectedModelOption.id },
+        body: { theorem, assumptions, proof: candidateProof, feedback, model: modelOption.id },
         fallbackError: 'Proof revision failed.',
         maxRetries: 1,
         retryOnHttp: true,
@@ -510,12 +516,12 @@ export default function App() {
       try {
         const ideasData = await requestJsonWithRetry<GenerateIdeasResponse>({
           stage: 'idea brainstorming',
-          endpoint: selectedModelOption.ideasApiPath,
-          body: { theorem, assumptions, literature: literatureMatches, knowledgeReferences: rankedKnowledgeReferences, model: selectedModelOption.id },
+          endpoint: modelOption.ideasApiPath,
+          body: { theorem, assumptions, literature: literatureMatches, knowledgeReferences: rankedKnowledgeReferences, model: modelOption.id },
           fallbackError: 'Idea generation failed.',
           maxRetries: 1,
           retryOnHttp: true,
-          requestTimeoutMs: selectedModelOption.provider === 'deepseek' ? 70000 : 50000,
+          requestTimeoutMs: modelOption.provider === 'deepseek' ? 70000 : 50000,
         });
         setPossibleIdeas(Array.isArray(ideasData.ideas) ? ideasData.ideas : []);
         setCandidateTheorems(Array.isArray(ideasData.candidateTheorems) ? ideasData.candidateTheorems : []);
@@ -581,7 +587,7 @@ export default function App() {
       }
 
       setProof(finalProof);
-      addLog(`Proof pipeline finished via ${selectedModelOption.label}.`, completed ? 'success' : 'warning');
+      addLog(`Proof pipeline finished via ${modelOption.label}.`, completed ? 'success' : 'warning');
     } catch (error: unknown) {
       console.error(error);
       const rawError = error instanceof Error ? error.message : 'Unknown server error.';
@@ -632,7 +638,7 @@ export default function App() {
             </div>
 
             <button
-              onClick={handleGenerate}
+              onClick={() => handleGenerate()}
               disabled={isGenerating}
               className={`flex items-center gap-2 px-6 py-2.5 rounded font-bold text-sm transition-all shadow-sm ${
                 isGenerating
@@ -707,6 +713,33 @@ export default function App() {
 
               <button onClick={handleExportKnowledgeBase} className="flex items-center justify-center gap-2 text-xs font-bold border border-slate-200 rounded-lg px-3 py-2 hover:border-[#064e3b]/40">
                 <Download size={14} /> Export KB
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-[1fr_auto] gap-3 mb-4">
+              <select
+                value={kbSelectedModelId}
+                onChange={(event) => setKbSelectedModelId(event.target.value)}
+                className="text-xs font-bold text-slate-700 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2"
+                disabled={isGenerating}
+              >
+                {kbModelOptions.map((option) => (
+                  <option key={option.id} value={option.id}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+              <button
+                onClick={() => handleGenerate(selectedKbModelOption.id)}
+                disabled={isGenerating}
+                className={`flex items-center justify-center gap-2 text-xs font-bold rounded-lg px-3 py-2 ${
+                  isGenerating
+                    ? 'bg-slate-100 text-slate-400 cursor-not-allowed'
+                    : 'bg-[#064e3b] text-white hover:bg-[#065f46]'
+                }`}
+              >
+                {isGenerating ? <RefreshCw size={14} className="animate-spin" /> : <Database size={14} />}
+                {isGenerating ? 'Generating...' : 'Generate (KB)'}
               </button>
             </div>
 
