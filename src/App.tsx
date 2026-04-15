@@ -22,8 +22,10 @@ import {
   ExternalLink,
   Check,
   Lightbulb,
+  Upload,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { createEmptyKnowledgeBase, mergePaperIntoKnowledgeBase, rankKnowledgeReferences, type KnowledgeBase, type RankedReference } from './kb';
 
 interface LogEntry {
   timestamp: string;
@@ -177,6 +179,8 @@ export default function App() {
   const [researchField, setResearchField] = useState('');
   const [literatureKeywords, setLiteratureKeywords] = useState('');
   const [keywordSource, setKeywordSource] = useState<LiteratureKeywords['source']>('fallback');
+  const [knowledgeBase, setKnowledgeBase] = useState<KnowledgeBase>(() => createEmptyKnowledgeBase());
+  const [isIngestingPaper, setIsIngestingPaper] = useState(false);
 
   const logEndRef = useRef<HTMLDivElement>(null);
   const proofRef = useRef<HTMLDivElement>(null);
@@ -189,6 +193,8 @@ export default function App() {
     () => [...literatureMatches].sort((a, b) => b.score - a.score)[0],
     [literatureMatches],
   );
+
+  const rankedKnowledgeReferences = useMemo<RankedReference[]>(() => rankKnowledgeReferences(knowledgeBase, theorem, assumptions, literatureKeywords), [knowledgeBase, theorem, assumptions, literatureKeywords]);
 
   useEffect(() => {
     setLiteratureKeywords('');
@@ -282,6 +288,67 @@ export default function App() {
     if (elements.length === 0) return;
     window.MathJax.typesetPromise(elements).catch((err) => console.error(err));
   }, [proof, activeTab, possibleIdeas, candidateTheorems]);
+
+
+
+  const handlePaperUpload = async (files: FileList | null) => {
+    if (!files || files.length === 0) return;
+    setIsIngestingPaper(true);
+    try {
+      const fileList = Array.from(files).filter((file) => file.name.toLowerCase().endsWith('.pdf'));
+      for (const file of fileList) {
+        const buffer = await file.arrayBuffer();
+        const bytes = new Uint8Array(buffer);
+        let binary = '';
+        for (let i = 0; i < bytes.length; i += 1) binary += String.fromCharCode(bytes[i]);
+        const fileDataBase64 = btoa(binary);
+
+        const response = await fetch('/api/ingest-paper', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ fileName: file.name, fileDataBase64 }),
+        });
+
+        if (!response.ok) {
+          throw new Error(`Ingest failed for ${file.name}`);
+        }
+
+        const payload = await response.json();
+        setKnowledgeBase((prev) => mergePaperIntoKnowledgeBase(prev, payload));
+        addLog(`Knowledge base updated from ${file.name}.`, 'success');
+      }
+    } catch (error) {
+      addLog(`Paper ingestion failed: ${error instanceof Error ? error.message : 'unknown error'}`, 'error');
+    } finally {
+      setIsIngestingPaper(false);
+    }
+  };
+
+  const handleExportKnowledgeBase = () => {
+    const blob = new Blob([JSON.stringify(knowledgeBase, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${knowledgeBase.kb_meta.name.replace(/\s+/g, '_')}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+    addLog('Knowledge base exported.', 'success');
+  };
+
+  const handleImportKnowledgeBase = async (file: File | null) => {
+    if (!file) return;
+    try {
+      const text = await file.text();
+      const payload = JSON.parse(text);
+      if (!payload?.kb_meta || !Array.isArray(payload?.papers) || !Array.isArray(payload?.entries)) {
+        throw new Error('Invalid knowledge base schema.');
+      }
+      setKnowledgeBase(payload as KnowledgeBase);
+      addLog(`Knowledge base imported (${payload.papers.length} papers).`, 'success');
+    } catch (error) {
+      addLog(`Knowledge base import failed: ${error instanceof Error ? error.message : 'unknown error'}`, 'error');
+    }
+  };
 
   const handleGenerate = async () => {
     if (isGenerating) return;
@@ -401,7 +468,7 @@ export default function App() {
       const proofData = await requestJsonWithRetry<GenerateProofResponse>({
         stage: 'candidate proof generation',
         endpoint: selectedModelOption.apiPath,
-        body: { theorem, assumptions, model: selectedModelOption.id },
+        body: { theorem, assumptions, knowledgeReferences: rankedKnowledgeReferences, model: selectedModelOption.id },
         fallbackError: 'Failed to generate proof.',
         maxRetries: 1,
         retryOnHttp: true,
@@ -444,7 +511,7 @@ export default function App() {
         const ideasData = await requestJsonWithRetry<GenerateIdeasResponse>({
           stage: 'idea brainstorming',
           endpoint: selectedModelOption.ideasApiPath,
-          body: { theorem, assumptions, literature: literatureMatches, model: selectedModelOption.id },
+          body: { theorem, assumptions, literature: literatureMatches, knowledgeReferences: rankedKnowledgeReferences, model: selectedModelOption.id },
           fallbackError: 'Idea generation failed.',
           maxRetries: 1,
           retryOnHttp: true,
@@ -612,6 +679,48 @@ export default function App() {
                   className="w-full bg-slate-50 border border-slate-200 rounded-lg p-4 text-sm font-medium focus:ring-2 focus:ring-[#064e3b]/10 focus:border-[#064e3b] transition-all min-h-[120px] resize-none leading-relaxed text-slate-700"
                 />
               </div>
+            </div>
+          </section>
+
+
+
+          <section className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="font-bold text-slate-900 flex items-center gap-2">
+                <Database size={18} className="text-[#064e3b]" /> Knowledge Base
+              </h2>
+              <span className="text-[10px] px-2 py-0.5 bg-emerald-50 text-emerald-700 rounded-full font-bold border border-emerald-100">
+                {knowledgeBase.papers.length} PAPERS / {knowledgeBase.entries.length} ENTRIES
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
+              <label className="flex items-center justify-center gap-2 text-xs font-bold border border-slate-200 rounded-lg px-3 py-2 cursor-pointer hover:border-[#064e3b]/40">
+                <Upload size={14} /> {isIngestingPaper ? 'Processing...' : 'Upload PDF(s)'}
+                <input type="file" accept="application/pdf" multiple className="hidden" onChange={(e) => handlePaperUpload(e.target.files)} disabled={isIngestingPaper} />
+              </label>
+
+              <label className="flex items-center justify-center gap-2 text-xs font-bold border border-slate-200 rounded-lg px-3 py-2 cursor-pointer hover:border-[#064e3b]/40">
+                <FileText size={14} /> Import KB
+                <input type="file" accept="application/json" className="hidden" onChange={(e) => handleImportKnowledgeBase(e.target.files?.[0] || null)} />
+              </label>
+
+              <button onClick={handleExportKnowledgeBase} className="flex items-center justify-center gap-2 text-xs font-bold border border-slate-200 rounded-lg px-3 py-2 hover:border-[#064e3b]/40">
+                <Download size={14} /> Export KB
+              </button>
+            </div>
+
+            <div className="max-h-40 overflow-y-auto space-y-2 pr-2">
+              {rankedKnowledgeReferences.slice(0, 5).map((reference) => (
+                <div key={reference.entry.entryId} className={`rounded-md border px-3 py-2 ${reference.role === 'primary' ? 'border-emerald-200 bg-emerald-50/50' : 'border-slate-200 bg-slate-50'}`}>
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-slate-700">{reference.entry.label}</span>
+                    <span className="text-[10px] font-mono text-slate-500">w={reference.score.toFixed(2)} • {reference.role}</span>
+                  </div>
+                  <p className="text-[11px] text-slate-500 line-clamp-2">{reference.entry.statement || reference.entry.proofSummary}</p>
+                </div>
+              ))}
+              {rankedKnowledgeReferences.length === 0 && <p className="text-xs text-slate-400">Upload PDFs or import a KB JSON to enable weighted references.</p>}
             </div>
           </section>
 
@@ -801,6 +910,11 @@ export default function App() {
                 <p className="text-[10px] font-bold text-[#064e3b] uppercase mb-2 tracking-wider">Top matched reference</p>
                 <p className="text-sm font-serif italic text-slate-700 leading-relaxed">{topReference?.title} — {topReference?.authors}</p>
                 <p className="text-[10px] text-slate-400 mt-3 font-bold">{topReference?.source}</p>
+                {rankedKnowledgeReferences[0]?.entry?.citations?.[0] && (
+                  <p className="text-[10px] text-slate-500 mt-1">
+                    KB Citation: {rankedKnowledgeReferences[0].entry.citations[0].paperTitle} pp.{rankedKnowledgeReferences[0].entry.citations[0].pageStart}-{rankedKnowledgeReferences[0].entry.citations[0].pageEnd}
+                  </p>
+                )}
               </div>
             </div>
           </section>

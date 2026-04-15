@@ -11,8 +11,6 @@ function parseIdeasPayload(rawText: string) {
     try {
       return JSON.parse(text);
     } catch {
-      // Gemini occasionally emits single backslashes (for example in LaTeX like "\to").
-      // JSON requires unknown escape sequences to be double-escaped.
       const escapedBackslashes = text.replace(/\\(?!["\\/bfnrtu])/g, '\\\\');
       return JSON.parse(escapedBackslashes);
     }
@@ -51,6 +49,7 @@ export default async function handler(req: any, res: any) {
   const theorem = typeof req.body?.theorem === 'string' ? req.body.theorem : '';
   const assumptions = typeof req.body?.assumptions === 'string' ? req.body.assumptions : '';
   const literature = Array.isArray(req.body?.literature) ? req.body.literature : [];
+  const knowledgeReferences = Array.isArray(req.body?.knowledgeReferences) ? req.body.knowledgeReferences : [];
   const requestedModel = typeof req.body?.model === 'string' ? req.body.model : defaultModel;
   const model = requestedModel.startsWith('gemini-') ? requestedModel : defaultModel;
 
@@ -64,6 +63,7 @@ Given workspace content, propose proof ideas and candidate theorems that directl
 Theorem statement:\n${theorem}
 Known assumptions:\n${assumptions || '(none)'}
 Literature candidates:\n${JSON.stringify(literature)}
+Knowledge-base references (weighted):\n${JSON.stringify(knowledgeReferences)}
 
 Return ONLY JSON with this schema:
 {
@@ -76,7 +76,7 @@ Return ONLY JSON with this schema:
 Requirements:
 - ideas must be specific to this theorem statement, not generic templates.
 - keep 3-5 ideas and up to 3 candidate theorems.
-- if theorem is about a.s. convergence => convergence in probability, include the key epsilon-event argument.
+- prioritize primary knowledge-base references while still using secondary references.
 - response language: English.`;
 
   try {
