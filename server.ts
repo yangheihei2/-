@@ -43,10 +43,24 @@ for (const route of API_ROUTES) {
   });
 }
 
+const distPath = path.join(__dirname, 'dist');
+const fs = await import('fs');
+if (fs.existsSync(distPath)) {
+  app.use(express.static(distPath));
+  app.get('*', (_req, res) => {
+    res.sendFile(path.join(distPath, 'index.html'));
+  });
+}
+
 const PORT = parseInt(process.env.PORT || '3001', 10);
 
 app.listen(PORT, () => {
+  const hasStatic = fs.existsSync(distPath);
   console.log(`\n  API server running at http://localhost:${PORT}`);
+  if (hasStatic) {
+    console.log(`  Serving frontend from dist/`);
+    console.log(`  Open http://localhost:${PORT} in your browser`);
+  }
   console.log(`  Routes: ${API_ROUTES.map((r) => `/api/${r}`).join(', ')}\n`);
 });
 

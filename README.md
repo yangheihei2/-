@@ -108,73 +108,159 @@ flowchart LR
 
 ---
 
-## 快速开始（本地）
+## 本地部署（macOS / Linux / Windows）
 
-### 1. 安装依赖
+### 前置要求
+
+- **Node.js 18+**（推荐 22 LTS）：[下载地址](https://nodejs.org/)
+- **API Key**（至少需要一个）：
+  - DeepSeek API Key：[申请地址](https://platform.deepseek.com/api_keys)
+  - Gemini API Key：[申请地址](https://aistudio.google.com/apikey)
+
+### 第 1 步：克隆项目
+
+```bash
+git clone https://github.com/yangheihei2/-.git
+cd -
+```
+
+### 第 2 步：安装依赖
 
 ```bash
 npm install
 ```
 
-### 2. 配置环境变量
+### 第 3 步：配置环境变量
 
-创建 `.env.local`：
+在项目根目录创建 `.env.local` 文件：
 
-```env
-GEMINI_API_KEY=your_gemini_key
-DEEPSEEK_API_KEY=your_deepseek_key          # 可选，仅使用 DeepSeek 模型时需要
-DEEPSEEK_REQUEST_TIMEOUT_MS=90000           # 可选，DeepSeek 请求超时（毫秒），默认 90000
+```bash
+# macOS / Linux
+cp .env.example .env.local
 ```
 
-> 只使用 Gemini 时，可只配置 `GEMINI_API_KEY`。  
-> `DEEPSEEK_REQUEST_TIMEOUT_MS` 范围为 30000–300000 毫秒，deepseek-reasoner 自动 ×1.5。
+然后编辑 `.env.local`，填入你的 API Key：
 
-### 3. 启动开发环境
+```env
+# 必填（至少配一个）
+GEMINI_API_KEY=your_gemini_api_key_here
+DEEPSEEK_API_KEY=your_deepseek_api_key_here
+
+# 可选：DeepSeek 单次请求超时（毫秒），默认 90000（90 秒）
+# DEEPSEEK_REQUEST_TIMEOUT_MS=90000
+```
+
+> **说明**：
+> - 如果只用 DeepSeek V4 Pro / V4 Flash，只需配 `DEEPSEEK_API_KEY`
+> - 如果只用 Gemini 2.5 Flash，只需配 `GEMINI_API_KEY`
+> - 两个都配，界面上可自由切换模型
+
+### 第 4 步：启动
 
 ```bash
 npm run dev
 ```
 
-这会同时启动：
-- **Vite 前端**：`http://localhost:3000`（带 HMR 热更新）
-- **Express API 服务器**：`http://localhost:3001`（自动代理，无需手动访问）
+启动后会看到类似输出：
 
-Vite 会自动将 `/api/*` 请求代理到 Express 服务器。
+```
+  VITE v6.x.x  ready in xxx ms
 
-其他可用命令：
-```bash
-npm run dev:client   # 仅启动前端（不含 API）
-npm run dev:server   # 仅启动 API 服务器
-npm run start        # 生产模式启动 API 服务器
+  ➜  Local:   http://localhost:3000/
+
+  API server running at http://localhost:3001
+  Routes: /api/generate-ideas, /api/generate-proof, ...
 ```
 
-### 4. 质量检查
+打开浏览器访问 **http://localhost:3000** 即可使用。
 
-```bash
-npm run lint    # TypeScript 类型检查
-npm run build   # 生产构建
-```
+> `npm run dev` 会同时启动：
+> - **前端**（Vite，端口 3000，带热更新）
+> - **后端 API**（Express，端口 3001，自动代理）
+>
+> 你只需访问 `localhost:3000`，所有 API 请求会自动转发到后端。
+
+### 其他命令
+
+| 命令 | 用途 |
+|------|------|
+| `npm run dev` | 启动前端 + API 服务器（开发模式） |
+| `npm run dev:client` | 仅启动前端 |
+| `npm run dev:server` | 仅启动 API 服务器 |
+| `npm run build` | 构建生产版本前端 |
+| `npm run lint` | TypeScript 类型检查 |
+| `npm run start` | 启动 API 服务器（生产模式） |
 
 ---
 
-## 部署
+## 生产部署（VPS / 云服务器）
 
-### 本地部署
+### 方式一：直接部署
 
 ```bash
+# 1. 安装 Node.js 22+
+curl -fsSL https://deb.nodesource.com/setup_22.x | sudo bash -
+sudo apt-get install -y nodejs
+
+# 2. 克隆并安装
+git clone https://github.com/yangheihei2/-.git
+cd -
 npm install
+
+# 3. 配置环境变量
+cp .env.example .env.local
+nano .env.local   # 填入 API Key
+
+# 4. 构建前端
 npm run build
-npm run start   # 启动 API 服务器（需自行配置前端静态文件服务）
+
+# 5. 用 PM2 守护进程运行
+npm install -g pm2
+pm2 start "npm run start" --name proof-assistant
+pm2 save
+pm2 startup   # 设置开机自启
 ```
 
-### 服务器部署
+### 方式二：Nginx 反向代理（推荐用于公网访问）
 
-1. 安装 Node.js 22+
-2. `npm install`
-3. 配置 `.env.local` 环境变量
-4. `npm run build` 构建前端
-5. 使用 PM2 或 systemd 运行 `npm run start`
-6. 用 Nginx 反向代理将 `/api/*` 转发到 `localhost:3001`，静态文件从 `dist/` 目录服务
+```nginx
+server {
+    listen 80;
+    server_name your-domain.com;
+
+    # 前端静态文件
+    location / {
+        root /path/to/-/dist;
+        try_files $uri $uri/ /index.html;
+    }
+
+    # API 代理到 Express
+    location /api/ {
+        proxy_pass http://127.0.0.1:3001;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_read_timeout 300s;   # AI 生成可能需要较长时间
+    }
+}
+```
+
+### 方式三：Docker（可选）
+
+```dockerfile
+FROM node:22-alpine
+WORKDIR /app
+COPY package*.json ./
+RUN npm ci
+COPY . .
+RUN npm run build
+EXPOSE 3001
+CMD ["npm", "run", "start"]
+```
+
+```bash
+docker build -t proof-assistant .
+docker run -d -p 3001:3001 --env-file .env.local proof-assistant
+```
 
 ---
 
