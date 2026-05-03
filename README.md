@@ -1,166 +1,108 @@
 # 数学证明助手（Proof Assistant）
 
-一个面向“证明思路整理 + 证明草稿生成”的 Web 项目。  
-你输入**定理陈述**和**已知条件**，系统会先给你可行的证明路线，再生成可渲染（MathJax）的证明文本。
+面向「证明思路整理 + 证明草稿生成」的 Web 应用。  
+输入 **定理陈述** 和 **已知条件**，系统通过多阶段 AI 流水线自动生成可渲染（MathJax）的数学证明文本。
 
 ---
 
-## 这个项目可以做什么？
+## 功能概览
 
-### 1) 自动生成“可执行”的证明思路
-- 根据你输入的问题，先返回：
-  - `Possible Proof Ideas`（可能的证明路线）
-  - `Candidate Theorems`（候选定理 + 为什么有用）
-- 适合在正式写证明前，先做“路线筛选”。
-
-### 2) 生成证明草稿（支持公式渲染）
-- 支持把证明结果切换为：
-  - **Compiled**（MathJax 渲染视图）
-  - **Source**（原始文本）
-- 方便你二次编辑并粘贴到论文、笔记或教学材料。
-
-### 3) 多模型可切换
-- `Gemini 2.5 Flash`
-- `DeepSeek Chat`
-- `DeepSeek Reasoner`
-
-你可以在界面中切换模型，对比不同模型的证明风格与严谨度。
-
----
-
-## AI 思路（工作流）
-
-这个项目不是“直接一句话吐证明”，而是分阶段执行：
+### 证明生成流水线
 
 ```mermaid
 flowchart LR
-  P[Problem] --> G[Generator]
-  G --> C[Candidate Solution]
-  C --> V[Verifier]
-  V -->|Correct| F[Final Output]
-  V -->|Minor fixes needed| R[Reviser]
-  R --> C
-  V -->|Critically flawed| G
+  P[输入定理] --> L[文献检索]
+  L --> I[思路生成]
+  I --> G[证明生成]
+  G --> V[严格校验]
+  V -->|PASS| F[最终输出]
+  V -->|MINOR_FIX| R[修订]
+  R --> V
+  V -->|REGENERATE| G
 ```
 
-1. **Problem（问题输入）**：读取 Theorem + Assumptions，明确要证明什么、可用什么。  
-2. **Literature Search（文献检索）**：按关键词、结构和领域术语检索可参考文献，做候选筛选与重排。  
-3. **Generator（候选解生成）**：输出 `Possible Proof Ideas`（可行路线）和 `Candidate Solution`（候选证明草稿）。  
-4. **Verifier（严格校验）**：判定 `PASS / MINOR_FIX / REGENERATE`。  
-5. **Reviser（小修订）**：若是可局部修复，按 verifier 反馈最小改动，再回到校验。  
-6. **Regenerate（重生成）**：若是关键逻辑断裂或方向错误，回到 generator 重走路线。  
-7. **Final Output（终止与输出）**：通过校验后输出最终证明；若达到轮次上限则输出“最佳可用解 + 风险提示”。  
-8. **Compiled 展示**：用 MathJax 渲染为可读的公式版证明，便于复核与编辑。
+1. **文献检索（Literature Search）**  
+   根据定理内容自动提取数学术语关键词（纯规则提取，不消耗 AI API），从 arXiv 和 Crossref 检索相关论文。搜索结果经过多维度评分（术语命中率 30% + 方法匹配 25% + 领域匹配 25% + 新鲜度 20%），压缩为 ~150 token 的 Literature Brief 注入到后续 AI prompt 中。
 
-### 为什么要重点做 Literature Search？
+2. **思路生成（Idea Brainstorming）**  
+   结合文献摘要和知识库参考，输出可行的证明路线（Possible Proof Ideas）和候选定理（Candidate Theorems）。
 
-- **降低“拍脑袋证明”的概率**：先找历史上常见的证明模板（反证法、构造法、归纳法、极值法、浓缩不等式技巧等），再生成 proof。  
-- **提供可复用的中间引理**：很多证明失败不是目标错，而是缺关键引理。文献能补齐这一步。  
-- **提前暴露边界条件与反例**：文献中的 counterexample、假设条件、tight bound 能阻止模型走错方向。  
-- **帮助 verifier 制定“审稿标准”**：文献给出规范写法与常见漏洞点（量词、定义域、可测性、交换极限条件等）。
+3. **证明生成（Proof Generation）**  
+   基于思路、文献和知识库参考，生成候选证明草稿。
 
-### Possible Proof 是什么？为什么重要？
+4. **严格校验（Verification）**  
+   判定 `PASS`（通过）/ `MINOR_FIX`（小修订）/ `REGENERATE`（重生成）。
 
-- **Possible Proof** 不是“最终证明”，而是“可执行候选路线 + 关键跳板”。
-- 它通常包含：
-  - 目标分解（主命题拆成子命题）；
-  - 计划使用的定理/引理及其适用条件；
-  - 每一步是否可验证（是否能被 verifier 检查）；
-  - 风险点（哪些步骤可能需要额外假设）。
-- 价值在于：
-  - 先判断“这条路值不值得走”；
-  - 即使失败，也能把失败定位到某个子步骤，便于 reviser 精修或 regenerate 重来。
+5. **修订（Revision）**  
+   对 MINOR_FIX 进行局部修复，最多 3 轮；对 REGENERATE 重新生成，最多 2 轮。
 
-### Literature 如何帮助 AI 真正“做 proof”？
+6. **渲染输出**  
+   MathJax 渲染为可读公式版证明，支持 Compiled（渲染）和 Source（源码）视图切换。
 
-把 literature 当作“结构化先验知识库”，它对 AI 的帮助主要体现在：
+### 知识库（Knowledge Base）
 
-1. **检索阶段**：给出与当前命题最接近的 theorem family、经典技巧和可复用定义。  
-2. **生成阶段**：把“文献中的证明骨架”映射到当前问题，得到更稳健的 candidate proof。  
-3. **校验阶段**：用文献中的已知必要条件检查当前证明是否越界（例如偷换条件、缺失约束）。  
-4. **修订阶段**：当 verifier 指出漏洞时，优先回填文献已有 lemma 或替换为已知稳定手法。  
+用户可上传 PDF 论文，系统通过 Gemini 自动提取：
 
-一句话：**literature 让 AI 从“语言生成”走向“基于证据的证明构造”**。
+| 字段 | 说明 |
+|------|------|
+| `type` | theorem / lemma / corollary / proposition / proof |
+| `statement` | 定理陈述 |
+| `proofSummary` | 证明摘要 |
+| `proofMethods` | 证明方法标签：induction, contradiction, construction, direct, contrapositive, exhaustion, probabilistic, combinatorial, algebraic, analytic, topological, other |
+| `prerequisites` | 前置依赖（如 "Hoeffding inequality", "Borel-Cantelli lemma"） |
+| `mathematicalDomain` | 数学领域（probability, statistics, analysis, algebra, topology, combinatorics, number theory, optimization, geometry, logic） |
+| `keywords` | 关键词列表 |
+| `importance` | 重要性权重 [0, 1] |
 
-> 这样设计的好处：
-> - 用户先看到“为什么这么证”，而不是只看到“结果”。
-> - 更适合教学、讨论和多人协作审稿。
+**检索算法**：对新输入的定理，使用 6 维加权评分从知识库中检索最相关的条目：
 
----
+| 维度 | 权重 | 方法 |
+|------|------|------|
+| 主题频率 | 15% | 论文主题在语料库中的出现频率 |
+| 关键词匹配 | 20% | TF-IDF 加权的关键词精确匹配 |
+| 语义相似度 | 20% | TF-IDF + bigram 的余弦相似度 |
+| 定理重要性 | 10% | 条目自身的 importance 字段 |
+| 证明方法匹配 | 20% | 从查询文本检测证明方法，与条目标签比对 |
+| 领域匹配 | 15% | 数学领域别名映射匹配 |
 
-## Workspace Example: Theorem 1 (Threshold Selection and Error-Rate Control)
+知识库支持 JSON 格式导入/导出，方便团队共享和版本管理。
 
-<small>This workspace example is adapted from your provided theorem image and is structured to demonstrate the workflow: literature search → candidate proof → verification → revision.</small>
+### 多模型支持
 
-### Known Assumptions
-
-<small>
-Let prior thresholds \(t_1,\dots,t_{i-1}\) be fixed. On the left-out class \(S_{i_t}\), define
-\[
-\overline{T}_i = \{T_i(X)\mid X\in S_{i_t}\},
-\]
-and the filtered subset (conditioned on previous thresholds)
-\[
-\overline{T}'_i=\{T_i(X)\mid X\in S_{i_t},\ T_1(X)<t_1,\dots,T_{i-1}(X)<t_{i-1}\}.
-\]
-Let \(t_{i(k)}\) and \(t'_{i(k)}\) denote the \(k\)-th order statistics of \(\overline{T}_i\) and \(\overline{T}'_i\), respectively. Let \(n_i\) and \(n'_i\) be their cardinalities. Let \(\alpha_i\) and \(\delta_i\) be the target control level and violation tolerance for the \(i\)-th under-classification error \(R_{i\star}(\cdot)\).
-
-Define
-\[
-\hat p_i=\frac{n'_i}{n_i},\quad p_i=\hat p_i+c(n_i),\quad \alpha'_i=\frac{\alpha_i}{p_i},\quad
-\delta'_i=\delta_i-\exp\{-2n_i c^2(n_i)\},
-\]
-where \(c(n)=O(1/\sqrt n)\). Also define
-\[
-\bar t_i=
-\begin{cases}
-t'_{i(k'_i)}, & \text{if } n'_i\ge \log\delta'_i/\log(1-\alpha'_i)\ \text{and}\ \alpha'_i<1,\\
-t_{i(k_i)}, & \text{otherwise},
-\end{cases}
-\]
-with
-\[
-k_i=\max\{k\in[n_i]\mid v(k,n_i,\alpha_i)\le\delta_i\},\quad
-k'_i=\max\{k\in[n'_i]\mid v(k,n'_i,\alpha'_i)\le\delta'_i\}.
-\]
-</small>
-
-### Theorem Statement
-
-<small>
-For all \(t_i\le \bar t_i\),
-\[
-\mathbb P\big(R_{i\star}(\hat\phi)>\alpha_i\big)
-=
-\mathbb P\Big(P_i\big[T_1(X)<t_1,\dots,T_i(X)<t_i\mid \bar t_i\big]>\alpha_i\Big)
-\le\delta_i.
-\]
-</small>
-
-In this workspace example, the system can automatically produce:
-
-- `Possible Proof Ideas`: order-statistics argument + concentration bounds (e.g., Hoeffding-type control) + piecewise threshold construction.  
-- `Candidate Theorems`: related results on quantile control, selection-bias correction, and conditional-probability upper bounds.  
-- `Verifier Checklist`: completeness of assumptions, positivity of \(\delta'_i\), and whether piecewise conditions cover all cases.
+| 模型 | 说明 |
+|------|------|
+| Gemini 2.5 Flash | Google，速度快，主模型 |
+| DeepSeek Chat | DeepSeek，通用对话 |
+| DeepSeek Reasoner | DeepSeek，推理增强 |
 
 ---
 
-## 项目架构
+## 技术架构
 
-- **前端**：React + Vite
-- **后端**：Vercel Serverless Functions
-- **模型接入**：Gemini / DeepSeek
-- **渲染**：MathJax
+| 层级 | 技术 |
+|------|------|
+| 前端 | React 19 + Vite + TypeScript + Tailwind CSS v4 |
+| 后端 | Vercel Serverless Functions（`/api/*.ts`） |
+| AI 模型 | Google Gemini（`@google/genai`）+ DeepSeek（REST API） |
+| 文献检索 | arXiv API + Crossref API |
+| 公式渲染 | MathJax CDN |
 
 ### API 路由
-- `POST /api/generate-ideas`：Gemini 思路生成
-- `POST /api/generate-ideas-deepseek`：DeepSeek 思路生成
-- `POST /api/generate-proof`：Gemini 证明生成
-- `POST /api/generate-proof-deepseek`：DeepSeek 证明生成
-- `POST /api/verify-proof`：Gemini 证明校验
-- `POST /api/verify-proof-deepseek`：DeepSeek 证明校验
-- `POST /api/revise-proof`：Gemini 小修订
-- `POST /api/revise-proof-deepseek`：DeepSeek 小修订
+
+| 路由 | 说明 |
+|------|------|
+| `POST /api/generate-ideas` | Gemini 思路生成 |
+| `POST /api/generate-ideas-deepseek` | DeepSeek 思路生成 |
+| `POST /api/generate-proof` | Gemini 证明生成 |
+| `POST /api/generate-proof-deepseek` | DeepSeek 证明生成 |
+| `POST /api/verify-proof` | Gemini 证明校验 |
+| `POST /api/verify-proof-deepseek` | DeepSeek 证明校验 |
+| `POST /api/revise-proof` | Gemini 小修订 |
+| `POST /api/revise-proof-deepseek` | DeepSeek 小修订 |
+| `POST /api/literature-search` | 文献检索（arXiv + Crossref） |
+| `POST /api/ingest-paper` | PDF 论文知识提取 |
+
+所有证明相关 API 接受 `literatureBrief`（压缩文献摘要字符串）和 `knowledgeReferences`（加权知识库引用）参数。
 
 ---
 
@@ -174,17 +116,16 @@ npm install
 
 ### 2. 配置环境变量
 
-创建 `.env.local`（或在 Vercel 配环境变量）：
+创建 `.env.local`：
 
 ```env
 GEMINI_API_KEY=your_gemini_key
-DEEPSEEK_API_KEY=your_deepseek_key
-DEEPSEEK_REQUEST_TIMEOUT_MS=90000  # 可选：DeepSeek 单次请求超时（毫秒）
+DEEPSEEK_API_KEY=your_deepseek_key          # 可选，仅使用 DeepSeek 模型时需要
+DEEPSEEK_REQUEST_TIMEOUT_MS=90000           # 可选，DeepSeek 请求超时（毫秒），默认 90000
 ```
 
 > 只使用 Gemini 时，可只配置 `GEMINI_API_KEY`。  
-> 若在 UI 选择 DeepSeek 模型，则必须配置 `DEEPSEEK_API_KEY`。
-> `DEEPSEEK_REQUEST_TIMEOUT_MS` 为可选项，默认 `90000`（90 秒），范围会被限制在 `5000` 到 `180000` 毫秒。
+> `DEEPSEEK_REQUEST_TIMEOUT_MS` 范围为 30000–300000 毫秒，deepseek-reasoner 自动 ×1.5。
 
 ### 3. 启动开发环境
 
@@ -194,40 +135,25 @@ npm run dev
 
 默认访问：`http://localhost:3000`
 
+> **注意**：`/api` 路由为 Vercel Serverless Function 格式。本地开发有两种方式：
+> - 使用 `vercel dev`（推荐，完整模拟 Serverless 运行时）
+> - 仅使用 `npm run dev`（前端可用，API 调用会返回 404）
+
 ### 4. 质量检查
 
 ```bash
-npm run lint
-npm run build
+npm run lint    # TypeScript 类型检查
+npm run build   # 生产构建
 ```
 
 ---
 
 ## 部署（Vercel）
 
-1. 将仓库推送到 GitHub。  
-2. 在 Vercel 导入该仓库。  
-3. 配置环境变量：
-   - `GEMINI_API_KEY`
-   - `DEEPSEEK_API_KEY`（如需 DeepSeek）
-4. 点击 Deploy。
-
----
-
-## 适用场景
-
-- 数学课程作业中的证明草稿探索
-- 论文写作前的证明路径头脑风暴
-- 团队讨论时快速对比不同证明策略
-- 教学中展示“从想法到证明”的完整链路
-
----
-
-## 注意事项
-
-- 本项目输出的是 **AI 生成证明草稿**，不保证 100% 正确。  
-- 用于作业、论文或正式发表前，请务必人工校验关键步骤。  
-- 对高难度命题，建议结合文献与人工推导共同验证。
+1. 将仓库推送到 GitHub
+2. 在 Vercel 导入该仓库
+3. 配置环境变量：`GEMINI_API_KEY`（必须）、`DEEPSEEK_API_KEY`（可选）
+4. 点击 Deploy
 
 ---
 
@@ -236,21 +162,86 @@ npm run build
 ```text
 .
 ├─ api/
-│  ├─ generate-ideas.ts
-│  ├─ generate-ideas-deepseek.ts
-│  ├─ generate-proof.ts
-│  ├─ generate-proof-deepseek.ts
-│  ├─ verify-proof.ts
-│  ├─ verify-proof-deepseek.ts
-│  ├─ revise-proof.ts
-│  └─ revise-proof-deepseek.ts
+│  ├─ generate-ideas.ts           # Gemini 思路生成
+│  ├─ generate-ideas-deepseek.ts  # DeepSeek 思路生成
+│  ├─ generate-proof.ts           # Gemini 证明生成
+│  ├─ generate-proof-deepseek.ts  # DeepSeek 证明生成
+│  ├─ verify-proof.ts             # Gemini 证明校验
+│  ├─ verify-proof-deepseek.ts    # DeepSeek 证明校验
+│  ├─ revise-proof.ts             # Gemini 小修订
+│  ├─ revise-proof-deepseek.ts    # DeepSeek 小修订
+│  ├─ literature-search.ts        # 文献检索
+│  └─ ingest-paper.ts             # PDF 知识提取
+├─ lib/
+│  └─ deepseek-client.ts          # DeepSeek API 客户端
 ├─ src/
-│  ├─ App.tsx
-│  ├─ main.tsx
-│  └─ index.css
+│  ├─ App.tsx                     # 主应用组件
+│  ├─ main.tsx                    # 入口
+│  ├─ index.css                   # 全局样式
+│  └─ kb.ts                       # 知识库类型定义 + 检索算法
 ├─ index.html
 ├─ package.json
 ├─ tsconfig.json
 ├─ vite.config.ts
 └─ vercel.json
 ```
+
+---
+
+## 文献检索工作原理
+
+### 关键词提取
+
+采用**纯规则提取**（不消耗 AI API）：
+- 20+ 组数学术语正则模式匹配（覆盖概率、分析、代数、拓扑、组合等领域）
+- 数学停用词过滤（排除 "the", "let", "prove" 等通用词）
+- 通用 token 补充（≥4 字符的非停用词）
+- 最终输出 ≤10 个关键词
+
+### 搜索策略
+
+- **arXiv**：支持按领域（`cat:math.PR` 等）过滤，自动从 `researchField` 映射到 arXiv category
+- **Crossref**：按文献计量学评分搜索
+- 并行发起两个搜索，去重后取 top 8
+
+### 评分公式
+
+```
+score = termScore × 0.30 + tokenScore × 0.25 + methodScore × 0.25 + freshnessScore × 0.20
+```
+
+| 维度 | 说明 |
+|------|------|
+| termScore | 数学专业术语在论文标题/摘要中的命中率 |
+| tokenScore | 通用 token 在标题/摘要中的命中率 |
+| methodScore | 证明方法关键词匹配 |
+| freshnessScore | ≤3年=1.0, ≤7年=0.7, ≤15年=0.4, >15年=0.2 |
+
+### 注入方式
+
+搜索结果压缩为 **Literature Brief**（~150 tokens），格式：
+
+```
+1. "Order statistics and quantile control" (arXiv 2021, score=0.87) — relevant tags
+2. "Hoeffding's inequality extensions" (Crossref 2019, score=0.82) — relevant tags
+3. "Sequential hypothesis testing" (arXiv 2023, score=0.79) — relevant tags
+```
+
+这段文本作为 `literatureBrief` 参数注入到 `generate-ideas` 和 `generate-proof` 的 prompt 中，让 AI 参考已有文献进行证明。
+
+---
+
+## 适用场景
+
+- 数学课程作业中的证明草稿探索
+- 论文写作前的证明路径头脑风暴
+- 团队讨论时对比不同证明策略
+- 教学中展示「从想法到证明」的完整链路
+
+---
+
+## 注意事项
+
+- 本项目输出的是 **AI 生成证明草稿**，不保证 100% 正确
+- 用于作业、论文或正式发表前，请务必人工校验关键步骤
+- 对高难度命题，建议结合文献与人工推导共同验证

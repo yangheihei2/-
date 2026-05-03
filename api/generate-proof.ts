@@ -17,26 +17,33 @@ export default async function handler(req: any, res: any) {
   const requestedModel = typeof req.body?.model === 'string' ? req.body.model : defaultModel;
   const model = requestedModel.startsWith('gemini-') ? requestedModel : defaultModel;
   const knowledgeReferences = Array.isArray(req.body?.knowledgeReferences) ? req.body.knowledgeReferences : [];
+  const literatureBrief = typeof req.body?.literatureBrief === 'string' ? req.body.literatureBrief : '';
 
   if (!theorem.trim()) {
     return res.status(400).json({ error: 'Theorem is required.' });
   }
 
+  const literatureSection = literatureBrief
+    ? `\nRelated academic literature:\n${literatureBrief}\n\nLeverage relevant methods, techniques, and results from these references in your proof where applicable.`
+    : '';
+
   const prompt = `You are a mathematical proof assistant.
 Theorem: ${theorem}
 Assumptions: ${assumptions}
 Knowledge-base references (sorted by weight, primary first): ${JSON.stringify(knowledgeReferences)}
+${literatureSection}
 
 Return a proof that can be directly rendered by MathJax in a web page.
 Requirements:
 1) Use readable sections: Theorem, Key Lemmas, Proof, and Conclusion.
-2) Write normal text plus math expressions using \(...\) and \[...\].
-3) Do not output full LaTeX document preamble (no \documentclass, \begin{document}, etc).
+2) Write normal text plus math expressions using \\(...\\) and \\[...\\].
+3) Do not output full LaTeX document preamble (no \\documentclass, \\begin{document}, etc).
 4) Keep the argument rigorous and concise.
-5) End with \qed or an explicit QED statement.
+5) End with \\qed or an explicit QED statement.
 6) Prefer primary references from the knowledge base, but also cross-check with secondary references.
 7) When using a reference idea, mention citation in format [Paper: <title>, pp.<start>-<end>].
-8) Response language: English.`;
+8) When using a technique from the literature, briefly note which reference inspired it.
+9) Response language: English.`;
 
   try {
     const genAI = new GoogleGenAI({ apiKey });
