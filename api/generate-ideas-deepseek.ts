@@ -1,7 +1,7 @@
-import { callDeepSeek } from '../lib/deepseek-client.js';
+import { callAiModel, formatProviderName } from '../lib/ai-client.js';
+import { DEFAULT_MODEL_ID, resolveModelId } from '../lib/model-config.js';
 
-const defaultModel = 'deepseek-v4-pro';
-const allowedModels = new Set(['deepseek-v4-pro', 'deepseek-v4-flash']);
+const defaultModel = DEFAULT_MODEL_ID;
 
 function parseIdeasPayload(rawText: string) {
   const cleaned = rawText.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
@@ -42,17 +42,12 @@ export default async function handler(req: any, res: any) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const apiKey = process.env.DEEPSEEK_API_KEY;
-  if (!apiKey) {
-    return res.status(500).json({ error: 'Server env DEEPSEEK_API_KEY is not configured.' });
-  }
-
   const theorem = typeof req.body?.theorem === 'string' ? req.body.theorem : '';
   const assumptions = typeof req.body?.assumptions === 'string' ? req.body.assumptions : '';
   const literatureBrief = typeof req.body?.literatureBrief === 'string' ? req.body.literatureBrief : '';
   const knowledgeReferences = Array.isArray(req.body?.knowledgeReferences) ? req.body.knowledgeReferences : [];
   const requestedModel = typeof req.body?.model === 'string' ? req.body.model : defaultModel;
-  const model = allowedModels.has(requestedModel) ? requestedModel : defaultModel;
+  const model = resolveModelId(requestedModel);
 
   if (!theorem.trim()) {
     return res.status(200).json({ ideas: [], candidateTheorems: [] });
@@ -85,8 +80,7 @@ Requirements:
 - response language: English.`;
 
   try {
-    const data = await callDeepSeek({
-      apiKey,
+    const data = await callAiModel({
       model,
       messages: [{ role: 'user', content: prompt }],
       temperature: 0.2,
@@ -96,8 +90,12 @@ Requirements:
     const payload = parseIdeasPayload(text);
     return res.status(200).json(payload);
   } catch (error) {
-    console.error('DeepSeek ideas error:', error);
-    const message = error instanceof Error ? error.message : 'DeepSeek ideas generation failed.';
-    return res.status(500).json({ error: message });
+    console.error(`${formatProviderName(model)} ideas error:`, error);
+    const message = error instanceof Error ? error.message : `${formatProviderName(model)} ideas generation failed.`;
+    return res.status(500).json({
+      error: message,
+      errorCode: error instanceof Error && 'errorCode' in error ? (error as any).errorCode : undefined,
+      userHint: error instanceof Error && 'userHint' in error ? (error as any).userHint : undefined,
+    });
   }
 }

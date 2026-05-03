@@ -27,6 +27,7 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { createEmptyKnowledgeBase, mergePaperIntoKnowledgeBase, migrateKnowledgeBase, rankKnowledgeReferences, type KnowledgeBase, type RankedReference } from './kb';
+import { MODEL_OPTIONS as SHARED_MODEL_OPTIONS, type ModelProvider } from '../lib/model-config';
 
 interface LogEntry {
   timestamp: string;
@@ -105,21 +106,23 @@ interface CandidateTheorem {
   why: string;
 }
 
-type ModelProvider = 'deepseek';
-
 const API_TIMEOUTS_MS = {
   default: 80000,
   ideas: {
     deepseek: 120000,
+    gemini: 120000,
   },
   proof: {
     deepseek: 285000,
+    gemini: 285000,
   },
   verification: {
     deepseek: 120000,
+    gemini: 120000,
   },
   revision: {
     deepseek: 120000,
+    gemini: 120000,
   },
 };
 
@@ -131,10 +134,34 @@ interface ModelOption {
   ideasApiPath: string;
 }
 
-const MODEL_OPTIONS: ModelOption[] = [
-  { id: 'deepseek-v4-pro', label: 'DeepSeek V4 Pro', provider: 'deepseek', apiPath: '/api/generate-proof-deepseek', ideasApiPath: '/api/generate-ideas-deepseek' },
-  { id: 'deepseek-v4-flash', label: 'DeepSeek V4 Flash', provider: 'deepseek', apiPath: '/api/generate-proof-deepseek', ideasApiPath: '/api/generate-ideas-deepseek' },
-];
+const PROOF_API_PATHS = {
+  proof: '/api/theorem-generate-proof',
+  ideas: '/api/theorem-generate-ideas',
+  verify: '/api/theorem-verify-proof',
+  revise: '/api/theorem-revise-proof',
+};
+
+const KB_API_PATHS = {
+  proof: '/api/knowledge-base-generate-proof',
+  ideas: '/api/knowledge-base-generate-ideas',
+  ingest: '/api/knowledge-base-ingest-paper',
+};
+
+const MODEL_OPTIONS: ModelOption[] = SHARED_MODEL_OPTIONS.map((option) => ({
+  id: option.id,
+  label: option.label,
+  provider: option.provider,
+  apiPath: PROOF_API_PATHS.proof,
+  ideasApiPath: PROOF_API_PATHS.ideas,
+}));
+
+const KB_MODEL_OPTIONS: ModelOption[] = SHARED_MODEL_OPTIONS.map((option) => ({
+  id: option.id,
+  label: option.label,
+  provider: option.provider,
+  apiPath: KB_API_PATHS.proof,
+  ideasApiPath: KB_API_PATHS.ideas,
+}));
 
 declare global {
   interface Window {
@@ -242,11 +269,13 @@ export default function App() {
   const proofRef = useRef<HTMLDivElement>(null);
   const ideasRef = useRef<HTMLDivElement>(null);
 
-  const resolveModelOption = (modelId: string) =>
+  const resolveProofModelOption = (modelId: string) =>
     MODEL_OPTIONS.find((option) => option.id === modelId) || MODEL_OPTIONS[0];
+  const resolveKbModelOption = (modelId: string) =>
+    KB_MODEL_OPTIONS.find((option) => option.id === modelId) || KB_MODEL_OPTIONS[0];
 
-  const proofModelOption = resolveModelOption(proofModelId);
-  const kbModelOption = resolveModelOption(kbModelId);
+  const proofModelOption = resolveProofModelOption(proofModelId);
+  const kbModelOption = resolveKbModelOption(kbModelId);
 
   const allSelectedMatches = useMemo(() => {
     const byKey = new Map<string, LiteratureMatch>();
@@ -454,7 +483,7 @@ export default function App() {
         let binary = '';
         for (let i = 0; i < bytes.length; i += 1) binary += String.fromCharCode(bytes[i]);
         const fileDataBase64 = btoa(binary);
-        const response = await fetch('/api/ingest-paper', {
+        const response = await fetch(KB_API_PATHS.ingest, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ fileName: file.name, fileDataBase64, model: kbModelId }),
@@ -525,7 +554,7 @@ export default function App() {
   const handleGenerate = async () => {
     if (isGenerating) return;
 
-    const modelOption = resolveModelOption(proofModelId);
+    const modelOption = resolveProofModelOption(proofModelId);
     setIsGenerating(true);
     setProof(null);
     setProofTrace([]);
@@ -536,8 +565,8 @@ export default function App() {
     addLog(`Pipeline started with ${modelOption.label}.`, 'info');
     updateTraceStep('Input parsed', `Theorem length ${theorem.trim().length}; assumptions length ${assumptions.trim().length}.`, 'success');
 
-    const verifyApiPath = '/api/verify-proof-deepseek';
-    const reviseApiPath = '/api/revise-proof-deepseek';
+    const verifyApiPath = PROOF_API_PATHS.verify;
+    const reviseApiPath = PROOF_API_PATHS.revise;
     const maxMinorFixRounds = 3;
     const maxRegenerateRounds = 2;
     let pipelineStage = 'initialization';
@@ -722,7 +751,7 @@ export default function App() {
   // KB Generate: independent from the standard proof model selection.
   const handleKbGenerate = async () => {
     if (isGenerating) return;
-    const modelOption = resolveModelOption(kbModelId);
+    const modelOption = resolveKbModelOption(kbModelId);
     setIsGenerating(true);
     setProof(null);
     setProofTrace([]);
@@ -917,7 +946,7 @@ export default function App() {
               <label className="mb-1 block text-[9px] font-bold uppercase tracking-widest text-slate-400">Knowledge Base Model</label>
               <select value={kbModelId} onChange={(e) => setKbModelId(e.target.value)}
                 className="w-full text-[11px] font-semibold text-slate-700 bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5" disabled={isGenerating || isIngestingPaper}>
-                {MODEL_OPTIONS.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
+                {KB_MODEL_OPTIONS.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
               </select>
             </div>
             <div className="grid grid-cols-3 gap-2 mb-3">

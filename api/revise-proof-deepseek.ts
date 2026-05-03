@@ -1,16 +1,11 @@
-import { callDeepSeek } from '../lib/deepseek-client.js';
+import { callAiModel, formatProviderName } from '../lib/ai-client.js';
+import { DEFAULT_MODEL_ID, resolveModelId } from '../lib/model-config.js';
 
-const defaultModel = 'deepseek-v4-pro';
-const allowedModels = new Set(['deepseek-v4-pro', 'deepseek-v4-flash']);
+const defaultModel = DEFAULT_MODEL_ID;
 
 export default async function handler(req: any, res: any) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
-  }
-
-  const apiKey = process.env.DEEPSEEK_API_KEY;
-  if (!apiKey) {
-    return res.status(500).json({ error: 'Server env DEEPSEEK_API_KEY is not configured.' });
   }
 
   const theorem = typeof req.body?.theorem === 'string' ? req.body.theorem : '';
@@ -18,7 +13,7 @@ export default async function handler(req: any, res: any) {
   const proof = typeof req.body?.proof === 'string' ? req.body.proof : '';
   const feedback = typeof req.body?.feedback === 'string' ? req.body.feedback : '';
   const requestedModel = typeof req.body?.model === 'string' ? req.body.model : defaultModel;
-  const model = allowedModels.has(requestedModel) ? requestedModel : defaultModel;
+  const model = resolveModelId(requestedModel);
 
   if (!theorem.trim() || !proof.trim()) {
     return res.status(400).json({ error: 'Theorem and proof are required.' });
@@ -35,8 +30,7 @@ Return only the revised proof text suitable for MathJax rendering.
 Do not include markdown fences or JSON.`;
 
   try {
-    const data = await callDeepSeek({
-      apiKey,
+    const data = await callAiModel({
       model,
       messages: [{ role: 'user', content: prompt }],
       temperature: 0.2,
@@ -45,8 +39,12 @@ Do not include markdown fences or JSON.`;
     const revisedProof = data?.choices?.[0]?.message?.content;
     return res.status(200).json({ revisedProof: revisedProof ?? proof });
   } catch (error) {
-    console.error('DeepSeek reviser error:', error);
-    const message = error instanceof Error ? error.message : 'DeepSeek revision failed.';
-    return res.status(500).json({ error: message });
+    console.error(`${formatProviderName(model)} reviser error:`, error);
+    const message = error instanceof Error ? error.message : `${formatProviderName(model)} revision failed.`;
+    return res.status(500).json({
+      error: message,
+      errorCode: error instanceof Error && 'errorCode' in error ? (error as any).errorCode : undefined,
+      userHint: error instanceof Error && 'userHint' in error ? (error as any).userHint : undefined,
+    });
   }
 }
