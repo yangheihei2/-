@@ -2,6 +2,7 @@ import { callDeepSeek } from '../lib/deepseek-client.js';
 
 const defaultModel = 'deepseek-v4-pro';
 const allowedModels = new Set(['deepseek-v4-pro', 'deepseek-v4-flash']);
+const fallbackModel = 'deepseek-v4-flash';
 
 type AttemptStatus = 'ok' | 'empty' | 'error';
 const PROOF_FULL_PROMPT_TIMEOUT_MS = 180000;
@@ -92,56 +93,59 @@ export default async function handler(req: any, res: any) {
       { type: 'full' as const, content: buildPrompt(theorem, assumptions, knowledgeReferences, literatureBrief, false) },
       { type: 'compact' as const, content: buildPrompt(theorem, assumptions, knowledgeReferences, literatureBrief, true) },
     ];
+    const modelCandidates = model === fallbackModel ? [model] : [model, fallbackModel];
     const attempts: AttemptReport[] = [];
 
-    for (const promptCandidate of promptCandidates) {
-      try {
-        const data = await callDeepSeek({
-          apiKey,
-          model,
-          messages: [{ role: 'user', content: promptCandidate.content }],
-          temperature: 0.2,
-          requestTimeoutMs: promptCandidate.type === 'full' ? PROOF_FULL_PROMPT_TIMEOUT_MS : PROOF_COMPACT_PROMPT_TIMEOUT_MS,
-          maxRetries: 0,
-        });
-
-        const proof = extractProofContent(data);
-        if (proof) {
-          attempts.push({
-            model,
-            promptType: promptCandidate.type,
-            status: 'ok',
-            detail: 'non-empty proof returned',
+    for (const candidateModel of modelCandidates) {
+      for (const promptCandidate of promptCandidates) {
+        try {
+          const data = await callDeepSeek({
+            apiKey,
+            model: candidateModel,
+            messages: [{ role: 'user', content: promptCandidate.content }],
+            temperature: 0.2,
+            requestTimeoutMs: promptCandidate.type === 'full' ? PROOF_FULL_PROMPT_TIMEOUT_MS : PROOF_COMPACT_PROMPT_TIMEOUT_MS,
+            maxRetries: 0,
           });
-          return res.status(200).json({
-            proof,
-            modelUsed: model,
-            compactPrompt: promptCandidate.type === 'compact',
-            attempts,
+
+          const proof = extractProofContent(data);
+          if (proof) {
+            attempts.push({
+              model: candidateModel,
+              promptType: promptCandidate.type,
+              status: 'ok',
+              detail: 'non-empty proof returned',
+            });
+            return res.status(200).json({
+              proof,
+              modelUsed: candidateModel,
+              compactPrompt: promptCandidate.type === 'compact',
+              attempts,
+            });
+          }
+
+          attempts.push({
+            model: candidateModel,
+            promptType: promptCandidate.type,
+            status: 'empty',
+            detail: 'API returned empty content',
+          });
+        } catch (error) {
+          const message = error instanceof Error ? error.message : 'Unknown DeepSeek request error.';
+          attempts.push({
+            model: candidateModel,
+            promptType: promptCandidate.type,
+            status: 'error',
+            detail: message,
           });
         }
-
-        attempts.push({
-          model,
-          promptType: promptCandidate.type,
-          status: 'empty',
-          detail: 'API returned empty content',
-        });
-      } catch (error) {
-        const message = error instanceof Error ? error.message : 'Unknown DeepSeek request error.';
-        attempts.push({
-          model,
-          promptType: promptCandidate.type,
-          status: 'error',
-          detail: message,
-        });
       }
     }
 
     return res.status(502).json({
-      error: 'DeepSeek proof generation failed for the selected model after prompt fallbacks.',
+      error: 'DeepSeek proof generation failed after trying the selected model, compact prompts, and Flash fallback.',
       errorCode: 'DEEPSEEK_GENERATION_SELECTED_MODEL_FAILED',
-      userHint: 'The selected DeepSeek model timed out or returned no content. Please retry with simpler assumptions or a shorter theorem statement.',
+      userHint: 'DeepSeek timed out or returned no content. Try Flash directly, simplify assumptions, or shorten the theorem statement.',
       summary: buildReadableSummary(attempts),
       attempts,
     });

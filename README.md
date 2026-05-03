@@ -69,7 +69,7 @@ flowchart LR
 
 ### 多模型支持
 
-右上角统一选择模型，所有功能（证明生成、KB Generate、思路生成等）共享同一个模型设置。
+右上角选择 Proof Model；Knowledge Base 面板内单独选择 Knowledge Base Model，PDF 上传和 KB Generate 使用知识库模型。
 
 | 模型 | 说明 |
 |------|------|
