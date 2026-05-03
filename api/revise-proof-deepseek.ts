@@ -1,7 +1,7 @@
 import { callDeepSeek } from '../lib/deepseek-client.js';
 
-const defaultModel = 'deepseek-chat';
-const allowedModels = new Set(['deepseek-chat', 'deepseek-reasoner']);
+const defaultModel = 'deepseek-v4-pro';
+const allowedModels = new Set(['deepseek-v4-pro', 'deepseek-v4-flash', 'deepseek-chat', 'deepseek-reasoner']);
 
 export default async function handler(req: any, res: any) {
   if (req.method !== 'POST') {
