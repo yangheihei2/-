@@ -237,14 +237,26 @@ export default function App() {
     document.head.appendChild(script);
   }, []);
 
+  const theoremPreviewRef = useRef<HTMLDivElement>(null);
+  const assumptionsPreviewRef = useRef<HTMLDivElement>(null);
+  const [showTheoremPreview, setShowTheoremPreview] = useState(false);
+  const [showAssumptionsPreview, setShowAssumptionsPreview] = useState(false);
+
+  const hasLatex = useCallback((text: string) => {
+    const pattern = /\\[([]|\\[[\]]|\$[^$]+\$|\\[a-zA-Z]+/;
+    return pattern.test(text);
+  }, []);
+
   useEffect(() => {
     if (!window.MathJax?.typesetPromise) return;
     const elements: HTMLElement[] = [];
     if (proof && activeTab === 'formatted' && proofRef.current) elements.push(proofRef.current);
     if ((possibleIdeas.length > 0 || candidateTheorems.length > 0) && ideasRef.current) elements.push(ideasRef.current);
+    if (showTheoremPreview && theoremPreviewRef.current) elements.push(theoremPreviewRef.current);
+    if (showAssumptionsPreview && assumptionsPreviewRef.current) elements.push(assumptionsPreviewRef.current);
     if (elements.length === 0) return;
     window.MathJax.typesetPromise(elements).catch((err) => console.error(err));
-  }, [proof, activeTab, possibleIdeas, candidateTheorems]);
+  }, [proof, activeTab, possibleIdeas, candidateTheorems, theorem, assumptions, showTheoremPreview, showAssumptionsPreview]);
 
   // Literature: debounced real-time search
   useEffect(() => {
@@ -707,18 +719,47 @@ export default function App() {
           <section className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
             <h2 className="font-bold text-slate-900 flex items-center gap-2 mb-4 text-sm">
               <Edit3 size={16} className="text-[#064e3b]" /> Workspace
+              <span className="text-[10px] text-slate-400 font-normal ml-auto">supports LaTeX: \(...\) \[...\]</span>
             </h2>
             <div className="space-y-4">
               {errorMessage && <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2.5 text-sm text-rose-700">{errorMessage}</div>}
               <div>
-                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5 block">Theorem Statement</label>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Theorem Statement</label>
+                  {hasLatex(theorem) && (
+                    <button onClick={() => setShowTheoremPreview((v) => !v)}
+                      className={`text-[10px] font-bold px-2 py-0.5 rounded transition-all ${showTheoremPreview ? 'bg-[#064e3b] text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}>
+                      {showTheoremPreview ? 'Editor' : 'Preview'}
+                    </button>
+                  )}
+                </div>
                 <textarea value={theorem} onChange={(e) => setTheorem(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-lg p-3.5 text-sm focus:ring-2 focus:ring-[#064e3b]/10 focus:border-[#064e3b] transition-all min-h-[120px] resize-none leading-relaxed text-slate-700" />
+                  className="w-full bg-slate-50 border border-slate-200 rounded-lg p-3.5 text-sm font-mono focus:ring-2 focus:ring-[#064e3b]/10 focus:border-[#064e3b] transition-all min-h-[120px] resize-none leading-relaxed text-slate-700" />
+                {showTheoremPreview && theorem.trim() && (
+                  <div ref={theoremPreviewRef}
+                    className="mt-2 p-3.5 bg-white border border-emerald-200 rounded-lg text-sm leading-relaxed text-slate-800 [&_.MathJax]:!text-slate-800">
+                    {theorem}
+                  </div>
+                )}
               </div>
               <div>
-                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5 block">Known Assumptions</label>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Known Assumptions</label>
+                  {hasLatex(assumptions) && (
+                    <button onClick={() => setShowAssumptionsPreview((v) => !v)}
+                      className={`text-[10px] font-bold px-2 py-0.5 rounded transition-all ${showAssumptionsPreview ? 'bg-[#064e3b] text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}>
+                      {showAssumptionsPreview ? 'Editor' : 'Preview'}
+                    </button>
+                  )}
+                </div>
                 <textarea value={assumptions} onChange={(e) => setAssumptions(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-lg p-3.5 text-sm focus:ring-2 focus:ring-[#064e3b]/10 focus:border-[#064e3b] transition-all min-h-[100px] resize-none leading-relaxed text-slate-700" />
+                  className="w-full bg-slate-50 border border-slate-200 rounded-lg p-3.5 text-sm font-mono focus:ring-2 focus:ring-[#064e3b]/10 focus:border-[#064e3b] transition-all min-h-[100px] resize-none leading-relaxed text-slate-700" />
+                {showAssumptionsPreview && assumptions.trim() && (
+                  <div ref={assumptionsPreviewRef}
+                    className="mt-2 p-3.5 bg-white border border-emerald-200 rounded-lg text-sm leading-relaxed text-slate-800 [&_.MathJax]:!text-slate-800">
+                    {assumptions}
+                  </div>
+                )}
               </div>
             </div>
           </section>
