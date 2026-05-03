@@ -30,7 +30,7 @@ export interface KnowledgeEntry {
   proofSummary: string;
   keywords: string[];
   topics: string[];
-  importance: number;
+  importance?: number;
   citations: CitationRef[];
   proofMethods: ProofMethod[];
   prerequisites: string[];
@@ -129,7 +129,7 @@ export function createEmptyKnowledgeBase(name = 'My Proof KB'): KnowledgeBase {
 }
 
 export function migrateEntry(entry: any): KnowledgeEntry {
-  return {
+  const migrated: KnowledgeEntry = {
     entryId: entry.entryId ?? '',
     paperId: entry.paperId ?? '',
     type: entry.type ?? 'theorem',
@@ -138,12 +138,15 @@ export function migrateEntry(entry: any): KnowledgeEntry {
     proofSummary: entry.proofSummary ?? '',
     keywords: Array.isArray(entry.keywords) ? entry.keywords : [],
     topics: Array.isArray(entry.topics) ? entry.topics : [],
-    importance: typeof entry.importance === 'number' ? entry.importance : 0,
     citations: Array.isArray(entry.citations) ? entry.citations : [],
     proofMethods: Array.isArray(entry.proofMethods) ? entry.proofMethods : [],
     prerequisites: Array.isArray(entry.prerequisites) ? entry.prerequisites : [],
     mathematicalDomain: typeof entry.mathematicalDomain === 'string' ? entry.mathematicalDomain : '',
   };
+  if (typeof entry.importance === 'number') {
+    migrated.importance = entry.importance;
+  }
+  return migrated;
 }
 
 export function migrateKnowledgeBase(raw: any): KnowledgeBase {
@@ -336,6 +339,34 @@ function scoreDomainMatch(entryDomain: string, queryText: string): number {
   return 0;
 }
 
+function scoreDynamicImportance(
+  entry: KnowledgeEntry,
+  keywordMatch: number,
+  semanticSimilarity: number,
+  proofMethodMatch: number,
+  domainMatch: number,
+  queryText: string,
+): number {
+  if (!queryText.trim()) return 0;
+  const typePrior: Record<ProofEntryType, number> = {
+    theorem: 1,
+    lemma: 0.75,
+    proposition: 0.85,
+    corollary: 0.65,
+    proof: 0.55,
+  };
+  const prerequisiteSignal = entry.prerequisites.length > 0 ? 0.1 : 0;
+  return Math.min(
+    1,
+    typePrior[entry.type] * 0.15 +
+      keywordMatch * 0.25 +
+      semanticSimilarity * 0.35 +
+      proofMethodMatch * 0.15 +
+      domainMatch * 0.10 +
+      prerequisiteSignal,
+  );
+}
+
 export function rankKnowledgeReferences(kb: KnowledgeBase, theorem: string, assumptions: string, keywords: string): RankedReference[] {
   const weights = kb.settings.weight_formula;
   const queryText = `${theorem} ${assumptions} ${keywords}`;
@@ -361,9 +392,9 @@ export function rankKnowledgeReferences(kb: KnowledgeBase, theorem: string, assu
     const topicFrequency = Math.min(1, topTopicFreq / maxTopicFrequency);
     const keywordMatch = scoreKeywordMatch(entry.keywords, queryTokens, idf);
     const semanticSimilarity = scoreSemanticSimilarity(entry, allQueryTokens, idf);
-    const theoremImportance = Math.min(1, Math.max(0, entry.importance || 0));
     const proofMethodMatch = scoreProofMethodMatch(entry.proofMethods ?? [], queryText);
     const domainMatch = scoreDomainMatch(entry.mathematicalDomain ?? '', queryText);
+    const theoremImportance = scoreDynamicImportance(entry, keywordMatch, semanticSimilarity, proofMethodMatch, domainMatch, queryText);
 
     const score =
       topicFrequency * weights.topic_frequency +

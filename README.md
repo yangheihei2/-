@@ -52,7 +52,7 @@ flowchart LR
 | `prerequisites` | 前置依赖（如 "Hoeffding inequality", "Borel-Cantelli lemma"） |
 | `mathematicalDomain` | 数学领域（probability, statistics, analysis, algebra, topology, combinatorics, number theory, optimization, geometry, logic） |
 | `keywords` | 关键词列表 |
-| `importance` | 重要性权重 [0, 1] |
+| dynamic importance | 根据用户输入、关键词、语义相似度、证明方法和领域动态计算 |
 
 **检索算法**：对新输入的定理，使用 6 维加权评分从知识库中检索最相关的条目：
 
@@ -61,7 +61,7 @@ flowchart LR
 | 主题频率 | 15% | 论文主题在语料库中的出现频率 |
 | 关键词匹配 | 20% | TF-IDF 加权的关键词精确匹配 |
 | 语义相似度 | 20% | TF-IDF + bigram 的余弦相似度 |
-| 定理重要性 | 10% | 条目自身的 importance 字段 |
+| 定理重要性 | 10% | 根据用户输入动态计算的 importance |
 | 证明方法匹配 | 20% | 从查询文本检测证明方法，与条目标签比对 |
 | 领域匹配 | 15% | 数学领域别名映射匹配 |
 

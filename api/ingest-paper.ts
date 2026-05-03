@@ -80,7 +80,6 @@ Return ONLY valid JSON with this exact schema:
       "proofSummary": "brief summary of how this is proved",
       "keywords": ["..."],
       "topics": ["${paperId}_topic_1"],
-      "importance": 0.9,
       "citations": [
         {
           "paperId": "${paperId}",
@@ -102,6 +101,7 @@ Rules:
 - "proofMethods" is an array of proof techniques used. Choose from: "induction", "contradiction", "construction", "direct", "contrapositive", "exhaustion", "probabilistic", "combinatorial", "algebraic", "analytic", "topological", "other".
 - "prerequisites" lists the key lemmas, theorems, or tools that this entry depends on (e.g. "Hoeffding inequality", "Borel-Cantelli lemma").
 - "mathematicalDomain" is the primary mathematical area. Choose from: "probability", "statistics", "analysis", "algebra", "topology", "combinatorics", "number theory", "optimization", "geometry", "logic", or a more specific subfield.
+- Do not include an "importance" field. The app calculates importance later from the user's theorem, assumptions, and reference relevance.
 - Add multiple topics based on paper keywords.
 - frequency is integer count; weight in [0,1].
 - Keep statements concise but faithful.
