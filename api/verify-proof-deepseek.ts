@@ -1,7 +1,7 @@
 import { callDeepSeek } from '../lib/deepseek-client.js';
 
 const defaultModel = 'deepseek-v4-pro';
-const allowedModels = new Set(['deepseek-v4-pro', 'deepseek-v4-flash', 'deepseek-chat', 'deepseek-reasoner']);
+const allowedModels = new Set(['deepseek-v4-pro', 'deepseek-v4-flash']);
 
 type VerifierDecision = 'PASS' | 'MINOR_FIX' | 'REGENERATE';
 

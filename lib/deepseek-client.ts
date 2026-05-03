@@ -14,8 +14,7 @@ function getRequestTimeoutMs(model: string) {
     ? Math.floor(configured)
     : REQUEST_TIMEOUT_MS_DEFAULT;
 
-  const needsExtraTime = model === 'deepseek-reasoner' || model === 'deepseek-v4-pro';
-  const withModelFactor = needsExtraTime ? Math.floor(baseTimeout * 1.5) : baseTimeout;
+  const withModelFactor = model === 'deepseek-v4-pro' ? Math.floor(baseTimeout * 1.5) : baseTimeout;
 
   return Math.min(REQUEST_TIMEOUT_MS_MAX, Math.max(REQUEST_TIMEOUT_MS_MIN, withModelFactor));
 }
@@ -41,8 +40,7 @@ export async function callDeepSeek({ apiKey, model, messages, temperature }: Dee
         messages,
       };
 
-      // deepseek-reasoner uses fixed sampling params and may reject temperature/top_p.
-      if (model !== 'deepseek-reasoner' && typeof temperature === 'number') {
+      if (typeof temperature === 'number') {
         body.temperature = temperature;
       }
 
