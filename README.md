@@ -84,7 +84,7 @@ flowchart LR
 | 层级 | 技术 |
 |------|------|
 | 前端 | React 19 + Vite + TypeScript + Tailwind CSS v4 |
-| 后端 | Vercel Serverless Functions（`/api/*.ts`） |
+| 后端 | Express + tsx（`server.ts` 挂载 `/api/*.ts` 路由） |
 | AI 模型 | Google Gemini（`@google/genai`）+ DeepSeek（REST API） |
 | 文献检索 | arXiv API + Crossref API |
 | 公式渲染 | MathJax CDN |
@@ -135,11 +135,18 @@ DEEPSEEK_REQUEST_TIMEOUT_MS=90000           # 可选，DeepSeek 请求超时（�
 npm run dev
 ```
 
-默认访问：`http://localhost:3000`
+这会同时启动：
+- **Vite 前端**：`http://localhost:3000`（带 HMR 热更新）
+- **Express API 服务器**：`http://localhost:3001`（自动代理，无需手动访问）
 
-> **注意**：`/api` 路由为 Vercel Serverless Function 格式。本地开发有两种方式：
-> - 使用 `vercel dev`（推荐，完整模拟 Serverless 运行时）
-> - 仅使用 `npm run dev`（前端可用，API 调用会返回 404）
+Vite 会自动将 `/api/*` 请求代理到 Express 服务器。
+
+其他可用命令：
+```bash
+npm run dev:client   # 仅启动前端（不含 API）
+npm run dev:server   # 仅启动 API 服务器
+npm run start        # 生产模式启动 API 服务器
+```
 
 ### 4. 质量检查
 
@@ -150,12 +157,24 @@ npm run build   # 生产构建
 
 ---
 
-## 部署（Vercel）
+## 部署
 
-1. 将仓库推送到 GitHub
-2. 在 Vercel 导入该仓库
-3. 配置环境变量：`GEMINI_API_KEY`（必须）、`DEEPSEEK_API_KEY`（可选）
-4. 点击 Deploy
+### 本地部署
+
+```bash
+npm install
+npm run build
+npm run start   # 启动 API 服务器（需自行配置前端静态文件服务）
+```
+
+### 服务器部署
+
+1. 安装 Node.js 22+
+2. `npm install`
+3. 配置 `.env.local` 环境变量
+4. `npm run build` 构建前端
+5. 使用 PM2 或 systemd 运行 `npm run start`
+6. 用 Nginx 反向代理将 `/api/*` 转发到 `localhost:3001`，静态文件从 `dist/` 目录服务
 
 ---
 
@@ -181,11 +200,11 @@ npm run build   # 生产构建
 │  ├─ main.tsx                    # 入口
 │  ├─ index.css                   # 全局样式
 │  └─ kb.ts                       # 知识库类型定义 + 检索算法
+├─ server.ts                      # Express API 服务器（本地开发 + 部署）
 ├─ index.html
 ├─ package.json
 ├─ tsconfig.json
-├─ vite.config.ts
-└─ vercel.json
+└─ vite.config.ts
 ```
 
 ---
