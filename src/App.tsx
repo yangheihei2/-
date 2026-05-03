@@ -95,11 +95,9 @@ interface ModelOption {
 }
 
 const MODEL_OPTIONS: ModelOption[] = [
-  { id: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash', provider: 'gemini', apiPath: '/api/generate-proof', ideasApiPath: '/api/generate-ideas' },
   { id: 'deepseek-v4-pro', label: 'DeepSeek V4 Pro', provider: 'deepseek', apiPath: '/api/generate-proof-deepseek', ideasApiPath: '/api/generate-ideas-deepseek' },
   { id: 'deepseek-v4-flash', label: 'DeepSeek V4 Flash', provider: 'deepseek', apiPath: '/api/generate-proof-deepseek', ideasApiPath: '/api/generate-ideas-deepseek' },
-  { id: 'deepseek-chat', label: 'DeepSeek Chat', provider: 'deepseek', apiPath: '/api/generate-proof-deepseek', ideasApiPath: '/api/generate-ideas-deepseek' },
-  { id: 'deepseek-reasoner', label: 'DeepSeek Reasoner', provider: 'deepseek', apiPath: '/api/generate-proof-deepseek', ideasApiPath: '/api/generate-ideas-deepseek' },
+  { id: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash', provider: 'gemini', apiPath: '/api/generate-proof', ideasApiPath: '/api/generate-ideas' },
 ];
 
 declare global {
@@ -172,8 +170,7 @@ export default function App() {
   const [proof, setProof] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'formatted' | 'source'>('formatted');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [selectedModelId, setSelectedModelId] = useState('gemini-2.5-flash');
-  const [kbSelectedModelId, setKbSelectedModelId] = useState('deepseek-v4-pro');
+  const [selectedModelId, setSelectedModelId] = useState('deepseek-v4-pro');
   const [possibleIdeas, setPossibleIdeas] = useState<string[]>([]);
   const [candidateTheorems, setCandidateTheorems] = useState<CandidateTheorem[]>([]);
 
@@ -195,8 +192,6 @@ export default function App() {
 
   const resolveModelOption = (modelId: string) =>
     MODEL_OPTIONS.find((option) => option.id === modelId) || MODEL_OPTIONS[0];
-  const kbModelOptions = MODEL_OPTIONS.filter((option) => option.provider === 'deepseek');
-  const selectedKbModelOption = resolveModelOption(kbSelectedModelId);
 
   const allSelectedMatches = useMemo(() => {
     const byKey = new Map<string, LiteratureMatch>();
@@ -574,10 +569,10 @@ export default function App() {
     }
   };
 
-  // KB Generate: independent, uses selected KB model + knowledge references only
+  // KB Generate: independent, uses the global model selection
   const handleKbGenerate = async () => {
     if (isGenerating) return;
-    const modelOption = selectedKbModelOption;
+    const modelOption = resolveModelOption(selectedModelId);
     setIsGenerating(true);
     setProof(null);
     setErrorMessage(null);
@@ -739,17 +734,11 @@ export default function App() {
                 <Download size={12} /> Export
               </button>
             </div>
-            <div className="flex gap-2 mb-3">
-              <select value={kbSelectedModelId} onChange={(e) => setKbSelectedModelId(e.target.value)}
-                className="text-[11px] font-bold text-slate-700 bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 flex-1" disabled={isGenerating}>
-                {kbModelOptions.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
-              </select>
-              <button onClick={handleKbGenerate} disabled={isGenerating}
-                className={`flex items-center gap-1.5 text-[11px] font-bold rounded-lg px-3 py-1.5 transition-all ${isGenerating ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-[#064e3b] text-white hover:bg-[#065f46]'}`}>
-                {isGenerating ? <RefreshCw size={12} className="animate-spin" /> : <Database size={12} />}
-                Generate (KB)
-              </button>
-            </div>
+            <button onClick={handleKbGenerate} disabled={isGenerating}
+              className={`flex items-center justify-center gap-1.5 text-[11px] font-bold rounded-lg px-3 py-2 mb-3 w-full transition-all ${isGenerating ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-[#064e3b] text-white hover:bg-[#065f46]'}`}>
+              {isGenerating ? <RefreshCw size={12} className="animate-spin" /> : <Database size={12} />}
+              Generate (KB)
+            </button>
             <div className="max-h-36 overflow-y-auto space-y-1.5 pr-1">
               {rankedKnowledgeReferences.slice(0, 5).map((ref) => (
                 <div key={ref.entry.entryId} className={`rounded-md border px-2.5 py-1.5 ${ref.role === 'primary' ? 'border-emerald-200 bg-emerald-50/50' : 'border-slate-200 bg-slate-50'}`}>
