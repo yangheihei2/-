@@ -105,25 +105,21 @@ interface CandidateTheorem {
   why: string;
 }
 
-type ModelProvider = 'gemini' | 'deepseek';
+type ModelProvider = 'deepseek';
 
 const API_TIMEOUTS_MS = {
   default: 80000,
   ideas: {
     deepseek: 120000,
-    gemini: 70000,
   },
   proof: {
     deepseek: 285000,
-    gemini: 120000,
   },
   verification: {
     deepseek: 120000,
-    gemini: 80000,
   },
   revision: {
     deepseek: 120000,
-    gemini: 80000,
   },
 };
 
@@ -138,7 +134,6 @@ interface ModelOption {
 const MODEL_OPTIONS: ModelOption[] = [
   { id: 'deepseek-v4-pro', label: 'DeepSeek V4 Pro', provider: 'deepseek', apiPath: '/api/generate-proof-deepseek', ideasApiPath: '/api/generate-ideas-deepseek' },
   { id: 'deepseek-v4-flash', label: 'DeepSeek V4 Flash', provider: 'deepseek', apiPath: '/api/generate-proof-deepseek', ideasApiPath: '/api/generate-ideas-deepseek' },
-  { id: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash', provider: 'gemini', apiPath: '/api/generate-proof', ideasApiPath: '/api/generate-ideas' },
 ];
 
 declare global {
@@ -537,8 +532,8 @@ export default function App() {
     addLog(`Pipeline started with ${modelOption.label}.`, 'info');
     updateTraceStep('Input parsed', `Theorem length ${theorem.trim().length}; assumptions length ${assumptions.trim().length}.`, 'success');
 
-    const verifyApiPath = modelOption.provider === 'gemini' ? '/api/verify-proof' : '/api/verify-proof-deepseek';
-    const reviseApiPath = modelOption.provider === 'gemini' ? '/api/revise-proof' : '/api/revise-proof-deepseek';
+    const verifyApiPath = '/api/verify-proof-deepseek';
+    const reviseApiPath = '/api/revise-proof-deepseek';
     const maxMinorFixRounds = 3;
     const maxRegenerateRounds = 2;
     let pipelineStage = 'initialization';

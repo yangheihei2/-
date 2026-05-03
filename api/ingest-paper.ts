@@ -1,4 +1,9 @@
-import { GoogleGenAI } from '@google/genai';
+import { PDFParse } from 'pdf-parse';
+import { callDeepSeek } from '../lib/deepseek-client.js';
+
+const defaultModel = 'deepseek-v4-pro';
+const allowedModels = new Set(['deepseek-v4-pro', 'deepseek-v4-flash']);
+const MAX_PDF_TEXT_CHARS = 60000;
 
 function parseJsonBlock(rawText: string) {
   const cleaned = rawText.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
@@ -32,18 +37,35 @@ function fallbackPayload(fileName: string) {
   };
 }
 
+async function extractPdfText(fileDataBase64: string) {
+  const parser = new PDFParse({ data: Buffer.from(fileDataBase64, 'base64') });
+  try {
+    const result = await parser.getText();
+    return result.text.replace(/\s+/g, ' ').trim().slice(0, MAX_PDF_TEXT_CHARS);
+  } finally {
+    await parser.destroy();
+  }
+}
+
+function extractMessageContent(data: any) {
+  const raw = data?.choices?.[0]?.message?.content;
+  return typeof raw === 'string' ? raw : '';
+}
+
 export default async function handler(req: any, res: any) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const apiKey = process.env.GEMINI_API_KEY;
+  const apiKey = process.env.DEEPSEEK_API_KEY;
   if (!apiKey) {
-    return res.status(500).json({ error: 'Server env GEMINI_API_KEY is not configured.' });
+    return res.status(500).json({ error: 'Server env DEEPSEEK_API_KEY is not configured.' });
   }
 
   const fileName = typeof req.body?.fileName === 'string' ? req.body.fileName : 'uploaded-paper.pdf';
   const fileDataBase64 = typeof req.body?.fileDataBase64 === 'string' ? req.body.fileDataBase64 : '';
+  const requestedModel = typeof req.body?.model === 'string' ? req.body.model : defaultModel;
+  const model = allowedModels.has(requestedModel) ? requestedModel : defaultModel;
 
   if (!fileDataBase64) {
     return res.status(400).json({ error: 'fileDataBase64 is required.' });
@@ -51,7 +73,14 @@ export default async function handler(req: any, res: any) {
 
   const paperId = `paper_${Date.now()}`;
 
-  const prompt = `You are extracting a mathematical paper knowledge base from a PDF.
+  let pdfText = '';
+  try {
+    pdfText = await extractPdfText(fileDataBase64);
+  } catch (error) {
+    console.error('PDF text extraction failed:', error);
+  }
+
+  const prompt = `You are extracting a mathematical paper knowledge base from PDF text.
 Return ONLY valid JSON with this exact schema:
 {
   "paper": {
@@ -105,29 +134,23 @@ Rules:
 - Add multiple topics based on paper keywords.
 - frequency is integer count; weight in [0,1].
 - Keep statements concise but faithful.
-- If uncertain, still return syntactically valid JSON with best effort.`;
+- If uncertain, still return syntactically valid JSON with best effort.
+
+PDF file name: ${fileName}
+Extracted PDF text:
+${pdfText || '(No extractable text found. Return a syntactically valid fallback using the file name.)'}`;
 
   try {
-    const genAI = new GoogleGenAI({ apiKey });
-    const response = await genAI.models.generateContent({
-      model: 'gemini-2.5-flash',
-      contents: [
-        {
-          role: 'user',
-          parts: [
-            { text: prompt },
-            {
-              inlineData: {
-                data: fileDataBase64,
-                mimeType: 'application/pdf',
-              },
-            },
-          ],
-        },
-      ],
+    const response = await callDeepSeek({
+      apiKey,
+      model,
+      messages: [{ role: 'user', content: prompt }],
+      temperature: 0.1,
+      requestTimeoutMs: 180000,
+      maxRetries: 0,
     });
 
-    const text = response.text ?? '';
+    const text = extractMessageContent(response);
     const payload = parseJsonBlock(text);
     return res.status(200).json(payload);
   } catch (error) {
