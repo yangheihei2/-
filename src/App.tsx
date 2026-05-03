@@ -111,6 +111,18 @@ declare global {
   }
 }
 
+function compactKnowledgeRefs(refs: RankedReference[]) {
+  return refs.map((r) => ({
+    label: r.entry.label,
+    statement: r.entry.statement,
+    proofSummary: r.entry.proofSummary,
+    proofMethods: r.entry.proofMethods,
+    prerequisites: r.entry.prerequisites,
+    domain: r.entry.mathematicalDomain,
+    role: r.role,
+  }));
+}
+
 function litMatchKey(m: LiteratureMatch): string {
   return `${m.title}|||${m.source}`;
 }
@@ -479,7 +491,7 @@ export default function App() {
       try {
         const ideasData = await requestJsonWithRetry<GenerateIdeasResponse>({
           stage: 'idea brainstorming', endpoint: modelOption.ideasApiPath,
-          body: { theorem, assumptions, literatureBrief, knowledgeReferences: rankedKnowledgeReferences, model: modelOption.id },
+          body: { theorem, assumptions, literatureBrief, knowledgeReferences: compactKnowledgeRefs(rankedKnowledgeReferences), model: modelOption.id },
           fallbackError: 'Idea generation failed.', maxRetries: 1, retryOnHttp: true,
           requestTimeoutMs: modelOption.provider === 'deepseek' ? 70000 : 50000,
         });
@@ -491,7 +503,7 @@ export default function App() {
       const fetchProof = async () => {
         const d = await requestJsonWithRetry<GenerateProofResponse>({
           stage: 'candidate proof generation', endpoint: modelOption.apiPath,
-          body: { theorem, assumptions, literatureBrief, knowledgeReferences: rankedKnowledgeReferences, model: modelOption.id },
+          body: { theorem, assumptions, literatureBrief, knowledgeReferences: compactKnowledgeRefs(rankedKnowledgeReferences), model: modelOption.id },
           fallbackError: 'Failed to generate proof.', maxRetries: 1, retryOnHttp: true,
           requestTimeoutMs: modelOption.provider === 'deepseek' ? 90000 : 70000,
         });
@@ -589,7 +601,7 @@ export default function App() {
         const response = await fetch(modelOption.ideasApiPath, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ theorem, assumptions, literatureBrief, knowledgeReferences: rankedKnowledgeReferences, model: modelOption.id }),
+          body: JSON.stringify({ theorem, assumptions, literatureBrief, knowledgeReferences: compactKnowledgeRefs(rankedKnowledgeReferences), model: modelOption.id }),
         });
         if (response.ok) {
           const data = await response.json();
@@ -603,7 +615,7 @@ export default function App() {
       const response = await fetch(modelOption.apiPath, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ theorem, assumptions, literatureBrief, knowledgeReferences: rankedKnowledgeReferences, model: modelOption.id }),
+        body: JSON.stringify({ theorem, assumptions, literatureBrief, knowledgeReferences: compactKnowledgeRefs(rankedKnowledgeReferences), model: modelOption.id }),
       });
       if (!response.ok) {
         const errText = await response.text();
