@@ -1,4 +1,18 @@
-export type ProofEntryType = 'theorem' | 'proof';
+export type ProofEntryType = 'theorem' | 'proof' | 'lemma' | 'corollary' | 'proposition';
+
+export type ProofMethod =
+  | 'induction'
+  | 'contradiction'
+  | 'construction'
+  | 'direct'
+  | 'contrapositive'
+  | 'exhaustion'
+  | 'probabilistic'
+  | 'combinatorial'
+  | 'algebraic'
+  | 'analytic'
+  | 'topological'
+  | 'other';
 
 export interface CitationRef {
   paperId: string;
@@ -18,6 +32,9 @@ export interface KnowledgeEntry {
   topics: string[];
   importance: number;
   citations: CitationRef[];
+  proofMethods: ProofMethod[];
+  prerequisites: string[];
+  mathematicalDomain: string;
 }
 
 export interface PaperTopic {
@@ -45,7 +62,7 @@ export interface KnowledgeBase {
     language: 'en';
     created_at: string;
     updated_at: string;
-    schema_version: '1.0';
+    schema_version: '1.0' | '2.0';
   };
   settings: {
     weight_formula: {
@@ -53,6 +70,8 @@ export interface KnowledgeBase {
       keyword_match: number;
       semantic_similarity: number;
       theorem_importance: number;
+      proof_method_match: number;
+      domain_match: number;
     };
     top_k_primary: number;
     top_k_secondary: number;
@@ -69,6 +88,8 @@ export interface RankedReference {
     keywordMatch: number;
     semanticSimilarity: number;
     theoremImportance: number;
+    proofMethodMatch: number;
+    domainMatch: number;
   };
   role: 'primary' | 'secondary';
 }
@@ -84,18 +105,20 @@ export function createEmptyKnowledgeBase(name = 'My Proof KB'): KnowledgeBase {
     kb_meta: {
       kb_id: `kb_${Date.now()}`,
       name,
-      version: '1.0.0',
+      version: '2.0.0',
       language: 'en',
       created_at: now,
       updated_at: now,
-      schema_version: '1.0',
+      schema_version: '2.0',
     },
     settings: {
       weight_formula: {
-        topic_frequency: 0.35,
-        keyword_match: 0.3,
-        semantic_similarity: 0.25,
-        theorem_importance: 0.1,
+        topic_frequency: 0.15,
+        keyword_match: 0.20,
+        semantic_similarity: 0.20,
+        theorem_importance: 0.10,
+        proof_method_match: 0.20,
+        domain_match: 0.15,
       },
       top_k_primary: 3,
       top_k_secondary: 10,
@@ -105,9 +128,45 @@ export function createEmptyKnowledgeBase(name = 'My Proof KB'): KnowledgeBase {
   };
 }
 
+export function migrateEntry(entry: any): KnowledgeEntry {
+  return {
+    entryId: entry.entryId ?? '',
+    paperId: entry.paperId ?? '',
+    type: entry.type ?? 'theorem',
+    label: entry.label ?? '',
+    statement: entry.statement ?? '',
+    proofSummary: entry.proofSummary ?? '',
+    keywords: Array.isArray(entry.keywords) ? entry.keywords : [],
+    topics: Array.isArray(entry.topics) ? entry.topics : [],
+    importance: typeof entry.importance === 'number' ? entry.importance : 0,
+    citations: Array.isArray(entry.citations) ? entry.citations : [],
+    proofMethods: Array.isArray(entry.proofMethods) ? entry.proofMethods : [],
+    prerequisites: Array.isArray(entry.prerequisites) ? entry.prerequisites : [],
+    mathematicalDomain: typeof entry.mathematicalDomain === 'string' ? entry.mathematicalDomain : '',
+  };
+}
+
+export function migrateKnowledgeBase(raw: any): KnowledgeBase {
+  const kb = raw as KnowledgeBase;
+  const settings = kb.settings ?? createEmptyKnowledgeBase().settings;
+  if (!settings.weight_formula.proof_method_match) {
+    settings.weight_formula = {
+      ...createEmptyKnowledgeBase().settings.weight_formula,
+      ...settings.weight_formula,
+    };
+  }
+  return {
+    ...kb,
+    kb_meta: { ...kb.kb_meta, schema_version: '2.0' },
+    settings,
+    entries: (kb.entries ?? []).map(migrateEntry),
+  };
+}
+
 export function mergePaperIntoKnowledgeBase(kb: KnowledgeBase, payload: IngestedPaperPayload): KnowledgeBase {
   const nextPapers = [...kb.papers.filter((p) => p.paperId !== payload.paper.paperId), payload.paper];
-  const nextEntries = [...kb.entries.filter((e) => e.paperId !== payload.paper.paperId), ...payload.entries];
+  const migratedEntries = payload.entries.map(migrateEntry);
+  const nextEntries = [...kb.entries.filter((e) => e.paperId !== payload.paper.paperId), ...migratedEntries];
   return {
     ...kb,
     kb_meta: {
@@ -119,38 +178,177 @@ export function mergePaperIntoKnowledgeBase(kb: KnowledgeBase, payload: Ingested
   };
 }
 
-function tokenize(text: string) {
+const MATH_STOP_WORDS = new Set([
+  'the', 'and', 'for', 'that', 'this', 'with', 'are', 'from', 'then',
+  'have', 'has', 'been', 'such', 'let', 'all', 'any', 'each', 'every',
+  'where', 'which', 'when', 'there', 'given', 'show', 'prove', 'assume',
+  'define', 'consider', 'suppose', 'note', 'also', 'thus', 'hence',
+  'therefore', 'since', 'because', 'implies', 'follows', 'holds',
+  'number', 'function', 'set', 'not', 'some',
+]);
+
+function tokenize(text: string): string[] {
   return text
     .toLowerCase()
-    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\\[a-z]+/g, ' ')
+    .replace(/[^a-z0-9\s-]/g, ' ')
     .split(/\s+/)
-    .filter((token) => token.length >= 3);
+    .filter((t) => t.length >= 3 && !MATH_STOP_WORDS.has(t));
 }
 
-function scoreKeywordMatch(entryKeywords: string[], queryTokens: string[]) {
+function bigrams(tokens: string[]): string[] {
+  const result: string[] = [];
+  for (let i = 0; i < tokens.length - 1; i++) {
+    result.push(`${tokens[i]}_${tokens[i + 1]}`);
+  }
+  return result;
+}
+
+function computeIdf(corpus: string[][]): Map<string, number> {
+  const docCount = corpus.length;
+  const df = new Map<string, number>();
+  for (const doc of corpus) {
+    const seen = new Set(doc);
+    for (const token of seen) {
+      df.set(token, (df.get(token) ?? 0) + 1);
+    }
+  }
+  const idf = new Map<string, number>();
+  for (const [token, count] of df) {
+    idf.set(token, Math.log((docCount + 1) / (count + 1)) + 1);
+  }
+  return idf;
+}
+
+function tfidfVector(tokens: string[], idf: Map<string, number>): Map<string, number> {
+  const tf = new Map<string, number>();
+  for (const t of tokens) {
+    tf.set(t, (tf.get(t) ?? 0) + 1);
+  }
+  const vec = new Map<string, number>();
+  for (const [term, count] of tf) {
+    const termIdf = idf.get(term) ?? 1;
+    vec.set(term, (count / tokens.length) * termIdf);
+  }
+  return vec;
+}
+
+function cosineSimilarity(a: Map<string, number>, b: Map<string, number>): number {
+  let dot = 0;
+  let normA = 0;
+  let normB = 0;
+  for (const [key, val] of a) {
+    normA += val * val;
+    const bVal = b.get(key);
+    if (bVal !== undefined) dot += val * bVal;
+  }
+  for (const [, val] of b) normB += val * val;
+  if (normA === 0 || normB === 0) return 0;
+  return dot / (Math.sqrt(normA) * Math.sqrt(normB));
+}
+
+function scoreKeywordMatch(entryKeywords: string[], queryTokens: string[], idf: Map<string, number>): number {
   if (entryKeywords.length === 0 || queryTokens.length === 0) return 0;
   const entrySet = new Set(entryKeywords.map((x) => x.toLowerCase()));
-  let hit = 0;
-  queryTokens.forEach((token) => {
-    if (entrySet.has(token)) hit += 1;
-  });
-  return Math.min(1, hit / Math.max(1, Math.min(queryTokens.length, 8)));
+  let weightedHit = 0;
+  let totalWeight = 0;
+  for (const token of queryTokens) {
+    const w = idf.get(token) ?? 1;
+    totalWeight += w;
+    if (entrySet.has(token)) weightedHit += w;
+  }
+  return totalWeight > 0 ? Math.min(1, weightedHit / totalWeight) : 0;
 }
 
-function scoreSemanticSimilarity(entry: KnowledgeEntry, queryTokens: string[]) {
-  if (queryTokens.length === 0) return 0;
-  const contentTokens = tokenize(`${entry.statement} ${entry.proofSummary}`);
-  const contentSet = new Set(contentTokens);
+function scoreSemanticSimilarity(entry: KnowledgeEntry, queryTokens: string[], idf: Map<string, number>): number {
+  const contentTokens = tokenize(`${entry.statement} ${entry.proofSummary} ${entry.prerequisites.join(' ')}`);
+  const allContentTokens = [...contentTokens, ...bigrams(contentTokens)];
+  const allQueryTokens = [...queryTokens, ...bigrams(queryTokens)];
+  const vecA = tfidfVector(allQueryTokens, idf);
+  const vecB = tfidfVector(allContentTokens, idf);
+  return cosineSimilarity(vecA, vecB);
+}
+
+const PROOF_METHOD_KEYWORDS: Record<ProofMethod, string[]> = {
+  induction: ['induction', 'inductive', 'base case', 'inductive step', 'recursive'],
+  contradiction: ['contradiction', 'contradict', 'absurd', 'suppose not', 'assume contrary'],
+  construction: ['construct', 'construction', 'constructive', 'exhibit', 'build'],
+  direct: ['direct', 'straightforward', 'directly'],
+  contrapositive: ['contrapositive', 'converse'],
+  exhaustion: ['exhaustion', 'case analysis', 'cases', 'enumerate'],
+  probabilistic: ['probabilistic', 'probability', 'random', 'expectation', 'measure'],
+  combinatorial: ['combinatorial', 'combinatorics', 'counting', 'pigeonhole', 'enumeration'],
+  algebraic: ['algebraic', 'algebra', 'polynomial', 'ring', 'field', 'group'],
+  analytic: ['analytic', 'analysis', 'convergence', 'limit', 'continuity', 'epsilon', 'delta', 'bound'],
+  topological: ['topological', 'topology', 'open', 'closed', 'compact', 'connected'],
+  other: [],
+};
+
+function detectProofMethods(text: string): ProofMethod[] {
+  const lower = text.toLowerCase();
+  const detected: ProofMethod[] = [];
+  for (const [method, keywords] of Object.entries(PROOF_METHOD_KEYWORDS) as [ProofMethod, string[]][]) {
+    if (method === 'other') continue;
+    if (keywords.some((kw) => lower.includes(kw))) {
+      detected.push(method);
+    }
+  }
+  return detected;
+}
+
+function scoreProofMethodMatch(entryMethods: ProofMethod[], queryText: string): number {
+  if (entryMethods.length === 0) return 0;
+  const queryMethods = detectProofMethods(queryText);
+  if (queryMethods.length === 0) return 0.3;
+  const entrySet = new Set(entryMethods);
   let hit = 0;
-  queryTokens.forEach((token) => {
-    if (contentSet.has(token)) hit += 1;
-  });
-  return Math.min(1, hit / Math.max(1, Math.min(queryTokens.length, 10)));
+  for (const m of queryMethods) {
+    if (entrySet.has(m)) hit++;
+  }
+  return Math.min(1, hit / queryMethods.length);
+}
+
+const DOMAIN_ALIASES: Record<string, string[]> = {
+  'probability': ['probability', 'stochastic', 'random', 'measure theory', 'martingale'],
+  'statistics': ['statistics', 'statistical', 'estimation', 'hypothesis', 'regression', 'bayesian'],
+  'analysis': ['analysis', 'real analysis', 'functional analysis', 'convergence', 'continuity'],
+  'algebra': ['algebra', 'linear algebra', 'abstract algebra', 'group theory', 'ring theory'],
+  'topology': ['topology', 'topological', 'manifold', 'homotopy'],
+  'combinatorics': ['combinatorics', 'combinatorial', 'graph theory', 'discrete'],
+  'number theory': ['number theory', 'prime', 'diophantine', 'modular arithmetic'],
+  'optimization': ['optimization', 'convex', 'linear programming', 'variational'],
+  'geometry': ['geometry', 'geometric', 'euclidean', 'differential geometry'],
+  'logic': ['logic', 'model theory', 'set theory', 'computability'],
+};
+
+function scoreDomainMatch(entryDomain: string, queryText: string): number {
+  if (!entryDomain) return 0;
+  const lower = queryText.toLowerCase();
+  const entryDomainLower = entryDomain.toLowerCase();
+
+  if (lower.includes(entryDomainLower)) return 1;
+
+  for (const [, aliases] of Object.entries(DOMAIN_ALIASES)) {
+    const entryMatch = aliases.some((a) => entryDomainLower.includes(a));
+    const queryMatch = aliases.some((a) => lower.includes(a));
+    if (entryMatch && queryMatch) return 0.8;
+  }
+  return 0;
 }
 
 export function rankKnowledgeReferences(kb: KnowledgeBase, theorem: string, assumptions: string, keywords: string): RankedReference[] {
   const weights = kb.settings.weight_formula;
-  const queryTokens = tokenize(`${theorem} ${assumptions} ${keywords}`);
+  const queryText = `${theorem} ${assumptions} ${keywords}`;
+  const queryTokens = tokenize(queryText);
+  const queryBigrams = bigrams(queryTokens);
+  const allQueryTokens = [...queryTokens, ...queryBigrams];
+
+  const corpus = kb.entries.map((e) => {
+    const tokens = tokenize(`${e.statement} ${e.proofSummary} ${e.keywords.join(' ')} ${e.prerequisites.join(' ')}`);
+    return [...tokens, ...bigrams(tokens)];
+  });
+  corpus.push(allQueryTokens);
+  const idf = computeIdf(corpus);
 
   const topicFrequencyMap = new Map<string, number>();
   kb.papers.forEach((paper) => {
@@ -161,15 +359,19 @@ export function rankKnowledgeReferences(kb: KnowledgeBase, theorem: string, assu
   const scored = kb.entries.map((entry) => {
     const topTopicFreq = Math.max(0, ...entry.topics.map((topicId) => topicFrequencyMap.get(topicId) || 0));
     const topicFrequency = Math.min(1, topTopicFreq / maxTopicFrequency);
-    const keywordMatch = scoreKeywordMatch(entry.keywords, queryTokens);
-    const semanticSimilarity = scoreSemanticSimilarity(entry, queryTokens);
+    const keywordMatch = scoreKeywordMatch(entry.keywords, queryTokens, idf);
+    const semanticSimilarity = scoreSemanticSimilarity(entry, allQueryTokens, idf);
     const theoremImportance = Math.min(1, Math.max(0, entry.importance || 0));
+    const proofMethodMatch = scoreProofMethodMatch(entry.proofMethods ?? [], queryText);
+    const domainMatch = scoreDomainMatch(entry.mathematicalDomain ?? '', queryText);
 
     const score =
       topicFrequency * weights.topic_frequency +
       keywordMatch * weights.keyword_match +
       semanticSimilarity * weights.semantic_similarity +
-      theoremImportance * weights.theorem_importance;
+      theoremImportance * weights.theorem_importance +
+      proofMethodMatch * (weights.proof_method_match ?? 0) +
+      domainMatch * (weights.domain_match ?? 0);
 
     return {
       entry,
@@ -179,6 +381,8 @@ export function rankKnowledgeReferences(kb: KnowledgeBase, theorem: string, assu
         keywordMatch,
         semanticSimilarity,
         theoremImportance,
+        proofMethodMatch,
+        domainMatch,
       },
       role: 'secondary' as const,
     };

@@ -77,7 +77,7 @@ Return ONLY valid JSON with this exact schema:
       "type": "theorem",
       "label": "Theorem 1",
       "statement": "...",
-      "proofSummary": "...",
+      "proofSummary": "brief summary of how this is proved",
       "keywords": ["..."],
       "topics": ["${paperId}_topic_1"],
       "importance": 0.9,
@@ -88,13 +88,20 @@ Return ONLY valid JSON with this exact schema:
           "pageStart": 1,
           "pageEnd": 1
         }
-      ]
+      ],
+      "proofMethods": ["induction"],
+      "prerequisites": ["Lemma 2.1", "Hoeffding inequality"],
+      "mathematicalDomain": "probability"
     }
   ]
 }
 Rules:
 - language must be English.
 - Extract theorem/lemma/proposition/corollary and associated proofs when possible.
+- "type" must be one of: "theorem", "lemma", "corollary", "proposition", "proof".
+- "proofMethods" is an array of proof techniques used. Choose from: "induction", "contradiction", "construction", "direct", "contrapositive", "exhaustion", "probabilistic", "combinatorial", "algebraic", "analytic", "topological", "other".
+- "prerequisites" lists the key lemmas, theorems, or tools that this entry depends on (e.g. "Hoeffding inequality", "Borel-Cantelli lemma").
+- "mathematicalDomain" is the primary mathematical area. Choose from: "probability", "statistics", "analysis", "algebra", "topology", "combinatorics", "number theory", "optimization", "geometry", "logic", or a more specific subfield.
 - Add multiple topics based on paper keywords.
 - frequency is integer count; weight in [0,1].
 - Keep statements concise but faithful.

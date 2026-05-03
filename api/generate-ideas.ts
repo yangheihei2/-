@@ -48,7 +48,7 @@ export default async function handler(req: any, res: any) {
 
   const theorem = typeof req.body?.theorem === 'string' ? req.body.theorem : '';
   const assumptions = typeof req.body?.assumptions === 'string' ? req.body.assumptions : '';
-  const literature = Array.isArray(req.body?.literature) ? req.body.literature : [];
+  const literatureBrief = typeof req.body?.literatureBrief === 'string' ? req.body.literatureBrief : '';
   const knowledgeReferences = Array.isArray(req.body?.knowledgeReferences) ? req.body.knowledgeReferences : [];
   const requestedModel = typeof req.body?.model === 'string' ? req.body.model : defaultModel;
   const model = requestedModel.startsWith('gemini-') ? requestedModel : defaultModel;
@@ -57,12 +57,16 @@ export default async function handler(req: any, res: any) {
     return res.status(200).json({ ideas: [], candidateTheorems: [] });
   }
 
+  const literatureSection = literatureBrief
+    ? `\nRelated academic literature:\n${literatureBrief}\n\nUse these references to ground your proof ideas in established methods and results.`
+    : '';
+
   const prompt = `You are a rigorous math reasoning assistant.
 Given workspace content, propose proof ideas and candidate theorems that directly match this problem.
 
 Theorem statement:\n${theorem}
 Known assumptions:\n${assumptions || '(none)'}
-Literature candidates:\n${JSON.stringify(literature)}
+${literatureSection}
 Knowledge-base references (weighted):\n${JSON.stringify(knowledgeReferences)}
 
 Return ONLY JSON with this schema:
@@ -76,6 +80,7 @@ Return ONLY JSON with this schema:
 Requirements:
 - ideas must be specific to this theorem statement, not generic templates.
 - keep 3-5 ideas and up to 3 candidate theorems.
+- when literature references are provided, incorporate relevant methods and results from them into your ideas.
 - prioritize primary knowledge-base references while still using secondary references.
 - response language: English.`;
 
