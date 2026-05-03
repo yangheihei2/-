@@ -99,6 +99,8 @@ interface ModelOption {
 
 const MODEL_OPTIONS: ModelOption[] = [
   { id: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash', provider: 'gemini', apiPath: '/api/generate-proof', ideasApiPath: '/api/generate-ideas' },
+  { id: 'deepseek-v4-pro', label: 'DeepSeek V4 Pro', provider: 'deepseek', apiPath: '/api/generate-proof-deepseek', ideasApiPath: '/api/generate-ideas-deepseek' },
+  { id: 'deepseek-v4-flash', label: 'DeepSeek V4 Flash', provider: 'deepseek', apiPath: '/api/generate-proof-deepseek', ideasApiPath: '/api/generate-ideas-deepseek' },
   { id: 'deepseek-chat', label: 'DeepSeek Chat', provider: 'deepseek', apiPath: '/api/generate-proof-deepseek', ideasApiPath: '/api/generate-ideas-deepseek' },
   { id: 'deepseek-reasoner', label: 'DeepSeek Reasoner', provider: 'deepseek', apiPath: '/api/generate-proof-deepseek', ideasApiPath: '/api/generate-ideas-deepseek' },
 ];
@@ -181,7 +183,7 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<'formatted' | 'source'>('formatted');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [selectedModelId, setSelectedModelId] = useState('gemini-2.5-flash');
-  const [kbSelectedModelId, setKbSelectedModelId] = useState('deepseek-chat');
+  const [kbSelectedModelId, setKbSelectedModelId] = useState('deepseek-v4-pro');
   const [possibleIdeas, setPossibleIdeas] = useState<string[]>([]);
   const [candidateTheorems, setCandidateTheorems] = useState<CandidateTheorem[]>([]);
   const [literatureMatches, setLiteratureMatches] = useState<LiteratureMatch[]>([]);

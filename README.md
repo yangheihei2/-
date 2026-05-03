@@ -72,8 +72,10 @@ flowchart LR
 | 模型 | 说明 |
 |------|------|
 | Gemini 2.5 Flash | Google，速度快，主模型 |
-| DeepSeek Chat | DeepSeek，通用对话 |
-| DeepSeek Reasoner | DeepSeek，推理增强 |
+| DeepSeek V4 Pro | DeepSeek 最新旗舰，推理能力最强 |
+| DeepSeek V4 Flash | DeepSeek 最新轻量版，速度快 |
+| DeepSeek Chat | DeepSeek 经典通用对话 |
+| DeepSeek Reasoner | DeepSeek 推理增强（旧版） |
 
 ---
 

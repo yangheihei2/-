@@ -14,8 +14,8 @@ function getRequestTimeoutMs(model: string) {
     ? Math.floor(configured)
     : REQUEST_TIMEOUT_MS_DEFAULT;
 
-  // reasoning model is typically slower; give it more headroom by default.
-  const withModelFactor = model === 'deepseek-reasoner' ? Math.floor(baseTimeout * 1.5) : baseTimeout;
+  const needsExtraTime = model === 'deepseek-reasoner' || model === 'deepseek-v4-pro';
+  const withModelFactor = needsExtraTime ? Math.floor(baseTimeout * 1.5) : baseTimeout;
 
   return Math.min(REQUEST_TIMEOUT_MS_MAX, Math.max(REQUEST_TIMEOUT_MS_MIN, withModelFactor));
 }
