@@ -41,7 +41,7 @@ flowchart LR
 
 ### 知识库（Knowledge Base）
 
-用户可上传 PDF 论文，系统通过 DeepSeek 自动提取：
+用户可上传 PDF 论文，系统通过所选 Knowledge Base Model 自动提取：
 
 | 字段 | 说明 |
 |------|------|
@@ -75,6 +75,12 @@ flowchart LR
 |------|------|
 | DeepSeek V4 Pro | DeepSeek 最新旗舰，推理能力最强（默认） |
 | DeepSeek V4 Flash | DeepSeek 最新轻量版，速度快成本低 |
+| Gemini 2.5 Flash-Lite (Free) | Gemini 免费档轻量模型 |
+| Gemini 2.5 Flash (Free) | Gemini 免费档 Flash 模型 |
+| Gemini 2.5 Pro | Gemini Pro 模型 |
+| Gemini 2.0 Flash / Flash-Lite (Free) | Gemini 免费档兼容模型 |
+| Gemini 1.5 Flash / Flash-8B (Free) | Gemini 免费档兼容模型 |
+| Gemini 1.5 Pro | Gemini Pro 兼容模型 |
 
 ---
 
@@ -84,7 +90,7 @@ flowchart LR
 |------|------|
 | 前端 | React 19 + Vite + TypeScript + Tailwind CSS v4 |
 | 后端 | Express + tsx（`server.ts` 挂载 `/api/*.ts` 路由） |
-| AI 模型 | DeepSeek（REST API） |
+| AI 模型 | DeepSeek + Gemini（REST API） |
 | 文献检索 | arXiv API + Crossref API |
 | 公式渲染 | MathJax CDN |
 
@@ -92,16 +98,19 @@ flowchart LR
 
 | 路由 | 说明 |
 |------|------|
-| `POST /api/generate-ideas` | DeepSeek 思路生成（兼容旧路由） |
-| `POST /api/generate-ideas-deepseek` | DeepSeek 思路生成 |
-| `POST /api/generate-proof` | DeepSeek 证明生成（兼容旧路由） |
-| `POST /api/generate-proof-deepseek` | DeepSeek 证明生成 |
-| `POST /api/verify-proof` | DeepSeek 证明校验（兼容旧路由） |
-| `POST /api/verify-proof-deepseek` | DeepSeek 证明校验 |
-| `POST /api/revise-proof` | DeepSeek 小修订（兼容旧路由） |
-| `POST /api/revise-proof-deepseek` | DeepSeek 小修订 |
+| `POST /api/theorem-generate-ideas` | 定理证明思路生成 |
+| `POST /api/theorem-generate-proof` | 定理证明生成 |
+| `POST /api/theorem-verify-proof` | 定理证明校验 |
+| `POST /api/theorem-revise-proof` | 定理证明小修订 |
+| `POST /api/knowledge-base-generate-ideas` | 知识库上下文思路生成 |
+| `POST /api/knowledge-base-generate-proof` | 知识库上下文证明生成 |
+| `POST /api/knowledge-base-ingest-paper` | PDF 论文知识提取 |
+| `POST /api/generate-ideas` / `*-deepseek` | 兼容旧路由，仍可按 `model` 调用 DeepSeek 或 Gemini |
+| `POST /api/generate-proof` / `*-deepseek` | 兼容旧路由，仍可按 `model` 调用 DeepSeek 或 Gemini |
+| `POST /api/verify-proof` / `*-deepseek` | 兼容旧路由，仍可按 `model` 调用 DeepSeek 或 Gemini |
+| `POST /api/revise-proof` / `*-deepseek` | 兼容旧路由，仍可按 `model` 调用 DeepSeek 或 Gemini |
 | `POST /api/literature-search` | 文献检索（arXiv + Crossref） |
-| `POST /api/ingest-paper` | PDF 论文知识提取 |
+| `POST /api/ingest-paper` | 兼容旧知识库上传路由 |
 
 所有证明相关 API 接受 `literatureBrief`（压缩文献摘要字符串）和 `knowledgeReferences`（加权知识库引用）参数。
 
@@ -114,6 +123,7 @@ flowchart LR
 - **Node.js 18+**（推荐 22 LTS）：[下载地址](https://nodejs.org/)
 - **API Key**：
   - DeepSeek API Key：[申请地址](https://platform.deepseek.com/api_keys)
+  - Gemini API Key：[申请地址](https://aistudio.google.com/app/apikey)
 
 ### 第 1 步：克隆项目
 
@@ -140,8 +150,9 @@ cp .env.example .env.local
 然后编辑 `.env.local`，填入你的 API Key：
 
 ```env
-# 必填
+# 至少配置一个模型供应商的 API Key
 DEEPSEEK_API_KEY=your_deepseek_api_key_here
+GEMINI_API_KEY=your_gemini_api_key_here
 
 # 可选：DeepSeek 单次请求超时（毫秒），默认 90000（90 秒）
 # DEEPSEEK_REQUEST_TIMEOUT_MS=90000
@@ -266,18 +277,24 @@ docker run -d -p 3001:3001 --env-file .env.local proof-assistant
 ```text
 .
 ├─ api/
-│  ├─ generate-ideas.ts           # DeepSeek 思路生成（兼容旧路由）
-│  ├─ generate-ideas-deepseek.ts  # DeepSeek 思路生成
-│  ├─ generate-proof.ts           # DeepSeek 证明生成（兼容旧路由）
-│  ├─ generate-proof-deepseek.ts  # DeepSeek 证明生成
-│  ├─ verify-proof.ts             # DeepSeek 证明校验（兼容旧路由）
-│  ├─ verify-proof-deepseek.ts    # DeepSeek 证明校验
-│  ├─ revise-proof.ts             # DeepSeek 小修订（兼容旧路由）
-│  ├─ revise-proof-deepseek.ts    # DeepSeek 小修订
+│  ├─ theorem-generate-ideas.ts          # 定理证明思路生成
+│  ├─ theorem-generate-proof.ts          # 定理证明生成
+│  ├─ theorem-verify-proof.ts            # 定理证明校验
+│  ├─ theorem-revise-proof.ts            # 定理证明小修订
+│  ├─ knowledge-base-generate-ideas.ts   # 知识库上下文思路生成
+│  ├─ knowledge-base-generate-proof.ts   # 知识库上下文证明生成
+│  ├─ knowledge-base-ingest-paper.ts     # 知识库 PDF 提取
+│  ├─ generate-ideas*.ts                 # 兼容旧路由
+│  ├─ generate-proof*.ts                 # 兼容旧路由
+│  ├─ verify-proof*.ts                   # 兼容旧路由
+│  ├─ revise-proof*.ts                   # 兼容旧路由
 │  ├─ literature-search.ts        # 文献检索
-│  └─ ingest-paper.ts             # PDF 知识提取
+│  └─ ingest-paper.ts             # 兼容旧知识库上传路由
 ├─ lib/
-│  └─ deepseek-client.ts          # DeepSeek API 客户端
+│  ├─ ai-client.ts                # 按模型自动选择供应商
+│  ├─ deepseek-client.ts          # DeepSeek API 客户端
+│  ├─ gemini-client.ts            # Gemini API 客户端
+│  └─ model-config.ts             # 统一模型清单
 ├─ src/
 │  ├─ App.tsx                     # 主应用组件
 │  ├─ main.tsx                    # 入口

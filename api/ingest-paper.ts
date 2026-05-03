@@ -1,8 +1,8 @@
 import { PDFParse } from 'pdf-parse';
-import { callDeepSeek } from '../lib/deepseek-client.js';
+import { callAiModel, formatProviderName } from '../lib/ai-client.js';
+import { DEFAULT_MODEL_ID, resolveModelId } from '../lib/model-config.js';
 
-const defaultModel = 'deepseek-v4-pro';
-const allowedModels = new Set(['deepseek-v4-pro', 'deepseek-v4-flash']);
+const defaultModel = DEFAULT_MODEL_ID;
 const MAX_PDF_TEXT_CHARS = 60000;
 
 function parseJsonBlock(rawText: string) {
@@ -57,15 +57,10 @@ export default async function handler(req: any, res: any) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const apiKey = process.env.DEEPSEEK_API_KEY;
-  if (!apiKey) {
-    return res.status(500).json({ error: 'Server env DEEPSEEK_API_KEY is not configured.' });
-  }
-
   const fileName = typeof req.body?.fileName === 'string' ? req.body.fileName : 'uploaded-paper.pdf';
   const fileDataBase64 = typeof req.body?.fileDataBase64 === 'string' ? req.body.fileDataBase64 : '';
   const requestedModel = typeof req.body?.model === 'string' ? req.body.model : defaultModel;
-  const model = allowedModels.has(requestedModel) ? requestedModel : defaultModel;
+  const model = resolveModelId(requestedModel);
 
   if (!fileDataBase64) {
     return res.status(400).json({ error: 'fileDataBase64 is required.' });
@@ -141,8 +136,7 @@ Extracted PDF text:
 ${pdfText || '(No extractable text found. Return a syntactically valid fallback using the file name.)'}`;
 
   try {
-    const response = await callDeepSeek({
-      apiKey,
+    const response = await callAiModel({
       model,
       messages: [{ role: 'user', content: prompt }],
       temperature: 0.1,
@@ -154,7 +148,7 @@ ${pdfText || '(No extractable text found. Return a syntactically valid fallback 
     const payload = parseJsonBlock(text);
     return res.status(200).json(payload);
   } catch (error) {
-    console.error('ingest-paper failed:', error);
+    console.error(`${formatProviderName(model)} ingest-paper failed:`, error);
     return res.status(200).json(fallbackPayload(fileName));
   }
 }

@@ -17,6 +17,13 @@ async function loadHandler(name: string) {
 }
 
 const API_ROUTES = [
+  'theorem-generate-ideas',
+  'theorem-generate-proof',
+  'theorem-verify-proof',
+  'theorem-revise-proof',
+  'knowledge-base-generate-ideas',
+  'knowledge-base-generate-proof',
+  'knowledge-base-ingest-paper',
   'generate-ideas',
   'generate-ideas-deepseek',
   'generate-proof',

@@ -1,8 +1,7 @@
-import { callDeepSeek } from '../lib/deepseek-client.js';
+import { callAiModel, formatProviderName } from '../lib/ai-client.js';
+import { DEFAULT_MODEL_ID, getFallbackModelIds, resolveModelId } from '../lib/model-config.js';
 
-const defaultModel = 'deepseek-v4-pro';
-const allowedModels = new Set(['deepseek-v4-pro', 'deepseek-v4-flash']);
-const fallbackModel = 'deepseek-v4-flash';
+const defaultModel = DEFAULT_MODEL_ID;
 
 type AttemptStatus = 'ok' | 'empty' | 'error';
 const PROOF_FULL_PROMPT_TIMEOUT_MS = 180000;
@@ -68,19 +67,10 @@ export default async function handler(req: any, res: any) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const apiKey = process.env.DEEPSEEK_API_KEY;
-  if (!apiKey) {
-    return res.status(500).json({
-      error: 'Server env DEEPSEEK_API_KEY is not configured.',
-      errorCode: 'DEEPSEEK_KEY_MISSING',
-      userHint: 'Please configure DEEPSEEK_API_KEY on the server before using DeepSeek models.',
-    });
-  }
-
   const theorem = typeof req.body?.theorem === 'string' ? req.body.theorem : '';
   const assumptions = typeof req.body?.assumptions === 'string' ? req.body.assumptions : '';
   const requestedModel = typeof req.body?.model === 'string' ? req.body.model : defaultModel;
-  const model = allowedModels.has(requestedModel) ? requestedModel : defaultModel;
+  const model = resolveModelId(requestedModel);
   const knowledgeReferences = Array.isArray(req.body?.knowledgeReferences) ? req.body.knowledgeReferences : [];
   const literatureBrief = typeof req.body?.literatureBrief === 'string' ? req.body.literatureBrief : '';
 
@@ -93,14 +83,13 @@ export default async function handler(req: any, res: any) {
       { type: 'full' as const, content: buildPrompt(theorem, assumptions, knowledgeReferences, literatureBrief, false) },
       { type: 'compact' as const, content: buildPrompt(theorem, assumptions, knowledgeReferences, literatureBrief, true) },
     ];
-    const modelCandidates = model === fallbackModel ? [model] : [model, fallbackModel];
+    const modelCandidates = [model, ...getFallbackModelIds(model)];
     const attempts: AttemptReport[] = [];
 
     for (const candidateModel of modelCandidates) {
       for (const promptCandidate of promptCandidates) {
         try {
-          const data = await callDeepSeek({
-            apiKey,
+          const data = await callAiModel({
             model: candidateModel,
             messages: [{ role: 'user', content: promptCandidate.content }],
             temperature: 0.2,
@@ -131,7 +120,7 @@ export default async function handler(req: any, res: any) {
             detail: 'API returned empty content',
           });
         } catch (error) {
-          const message = error instanceof Error ? error.message : 'Unknown DeepSeek request error.';
+          const message = error instanceof Error ? error.message : 'Unknown model request error.';
           attempts.push({
             model: candidateModel,
             promptType: promptCandidate.type,
@@ -143,19 +132,19 @@ export default async function handler(req: any, res: any) {
     }
 
     return res.status(502).json({
-      error: 'DeepSeek proof generation failed after trying the selected model, compact prompts, and Flash fallback.',
-      errorCode: 'DEEPSEEK_GENERATION_SELECTED_MODEL_FAILED',
-      userHint: 'DeepSeek timed out or returned no content. Try Flash directly, simplify assumptions, or shorten the theorem statement.',
+      error: `${formatProviderName(model)} proof generation failed after trying the selected model, compact prompts, and provider fallbacks.`,
+      errorCode: 'AI_GENERATION_SELECTED_MODEL_FAILED',
+      userHint: 'The model timed out, returned no content, or is unavailable. Try a free Flash/Flash-Lite model, simplify assumptions, or shorten the theorem statement.',
       summary: buildReadableSummary(attempts),
       attempts,
     });
   } catch (error) {
-    console.error('DeepSeek generator error:', error);
-    const message = error instanceof Error ? error.message : 'DeepSeek request failed. Please retry later.';
+    console.error(`${formatProviderName(model)} generator error:`, error);
+    const message = error instanceof Error ? error.message : `${formatProviderName(model)} request failed. Please retry later.`;
     return res.status(500).json({
       error: message,
-      errorCode: 'DEEPSEEK_GENERATION_UNCAUGHT_ERROR',
-      userHint: 'An uncaught server error occurred. Please check server logs for details.',
+      errorCode: error instanceof Error && 'errorCode' in error ? (error as any).errorCode : 'AI_GENERATION_UNCAUGHT_ERROR',
+      userHint: error instanceof Error && 'userHint' in error ? (error as any).userHint : 'An uncaught server error occurred. Please check server logs for details.',
     });
   }
 }

@@ -1,7 +1,7 @@
-import { callDeepSeek } from '../lib/deepseek-client.js';
+import { callAiModel, formatProviderName } from '../lib/ai-client.js';
+import { DEFAULT_MODEL_ID, resolveModelId } from '../lib/model-config.js';
 
-const defaultModel = 'deepseek-v4-pro';
-const allowedModels = new Set(['deepseek-v4-pro', 'deepseek-v4-flash']);
+const defaultModel = DEFAULT_MODEL_ID;
 
 type VerifierDecision = 'PASS' | 'MINOR_FIX' | 'REGENERATE';
 
@@ -69,17 +69,12 @@ export default async function handler(req: any, res: any) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const apiKey = process.env.DEEPSEEK_API_KEY;
-  if (!apiKey) {
-    return res.status(500).json({ error: 'Server env DEEPSEEK_API_KEY is not configured.' });
-  }
-
   const body = normalizeBody(req.body);
   const theorem = firstString(body, ['theorem', 'theoremStatement', 'statement', 'theorem_statement']);
   const assumptions = firstString(body, ['assumptions']);
   const proof = firstString(body, ['proof', 'candidateProof', 'draftProof', 'candidate_proof', 'draft_proof']);
   const requestedModel = firstString(body, ['model']) || defaultModel;
-  const model = allowedModels.has(requestedModel) ? requestedModel : defaultModel;
+  const model = resolveModelId(requestedModel);
 
   const missingFields = [
     !theorem.trim() ? 'theorem' : null,
@@ -111,8 +106,7 @@ Rules:
 - feedback must mention the most important issue succinctly.`;
 
   try {
-    const data = await callDeepSeek({
-      apiKey,
+    const data = await callAiModel({
       model,
       messages: [{ role: 'user', content: prompt }],
       temperature: 0.1,
@@ -122,8 +116,12 @@ Rules:
     const payload = parseVerifierPayload(text);
     return res.status(200).json(payload);
   } catch (error) {
-    console.error('DeepSeek verifier error:', error);
-    const message = error instanceof Error ? error.message : 'DeepSeek verification failed.';
-    return res.status(500).json({ error: message });
+    console.error(`${formatProviderName(model)} verifier error:`, error);
+    const message = error instanceof Error ? error.message : `${formatProviderName(model)} verification failed.`;
+    return res.status(500).json({
+      error: message,
+      errorCode: error instanceof Error && 'errorCode' in error ? (error as any).errorCode : undefined,
+      userHint: error instanceof Error && 'userHint' in error ? (error as any).userHint : undefined,
+    });
   }
 }
