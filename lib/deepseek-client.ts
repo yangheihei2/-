@@ -24,14 +24,18 @@ interface DeepSeekCallParams {
   model: string;
   messages: Array<{ role: 'user' | 'system' | 'assistant'; content: string }>;
   temperature?: number;
+  requestTimeoutMs?: number;
+  maxRetries?: number;
 }
 
-export async function callDeepSeek({ apiKey, model, messages, temperature }: DeepSeekCallParams) {
+export async function callDeepSeek({ apiKey, model, messages, temperature, requestTimeoutMs: requestTimeoutOverrideMs, maxRetries = MAX_RETRIES }: DeepSeekCallParams) {
   let lastError = 'DeepSeek request failed.';
 
-  for (let attempt = 0; attempt <= MAX_RETRIES; attempt += 1) {
+  for (let attempt = 0; attempt <= maxRetries; attempt += 1) {
     const controller = new AbortController();
-    const requestTimeoutMs = getRequestTimeoutMs(model);
+    const requestTimeoutMs = typeof requestTimeoutOverrideMs === 'number'
+      ? Math.min(REQUEST_TIMEOUT_MS_MAX, Math.max(REQUEST_TIMEOUT_MS_MIN, Math.floor(requestTimeoutOverrideMs)))
+      : getRequestTimeoutMs(model);
     const timeout = setTimeout(() => controller.abort(), requestTimeoutMs);
 
     try {
@@ -59,7 +63,7 @@ export async function callDeepSeek({ apiKey, model, messages, temperature }: Dee
       if (!response.ok) {
         lastError = `DeepSeek API error ${response.status}: ${rawText || 'No response body.'}`;
         const shouldRetry = RETRYABLE_STATUS_CODES.has(response.status) || response.status >= 500;
-        if (shouldRetry && attempt < MAX_RETRIES) {
+        if (shouldRetry && attempt < maxRetries) {
           await sleep(1000 * (attempt + 1));
           continue;
         }
@@ -75,7 +79,7 @@ export async function callDeepSeek({ apiKey, model, messages, temperature }: Dee
         lastError = error instanceof Error ? error.message : 'Unknown DeepSeek request error.';
       }
 
-      if (attempt < MAX_RETRIES) {
+      if (attempt < maxRetries) {
         await sleep(1000 * (attempt + 1));
         continue;
       }

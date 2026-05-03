@@ -240,9 +240,14 @@ server {
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_read_timeout 300s;   # AI 生成可能需要较长时间
+        proxy_send_timeout 300s;
+        send_timeout 300s;
     }
 }
 ```
+
+> 如果候选证明生成仍提示超时，请确认前端已重新执行 `npm run build` 并重启 PM2。
+> Nginx 的 `proxy_read_timeout` 只控制反向代理等待时间；应用本身也会按前端和 DeepSeek 客户端的超时配置主动中断请求。
 
 ### 方式三：Docker（可选）
 

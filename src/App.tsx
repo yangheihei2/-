@@ -86,6 +86,26 @@ interface CandidateTheorem {
 
 type ModelProvider = 'gemini' | 'deepseek';
 
+const API_TIMEOUTS_MS = {
+  default: 80000,
+  ideas: {
+    deepseek: 120000,
+    gemini: 70000,
+  },
+  proof: {
+    deepseek: 285000,
+    gemini: 120000,
+  },
+  verification: {
+    deepseek: 120000,
+    gemini: 80000,
+  },
+  revision: {
+    deepseek: 120000,
+    gemini: 80000,
+  },
+};
+
 interface ModelOption {
   id: string;
   label: string;
@@ -460,7 +480,7 @@ export default function App() {
       stage: string; endpoint: string; body: Record<string, unknown>; fallbackError: string;
       maxRetries?: number; retryOnHttp?: boolean; requestTimeoutMs?: number;
     }) => {
-      const { stage, endpoint, body, fallbackError, maxRetries = 1, retryOnHttp = true, requestTimeoutMs = 80000 } = params;
+      const { stage, endpoint, body, fallbackError, maxRetries = 1, retryOnHttp = true, requestTimeoutMs = API_TIMEOUTS_MS.default } = params;
       pipelineStage = stage;
       let response: Response | null = null;
       let rawText = '';
@@ -505,7 +525,7 @@ export default function App() {
           stage: 'idea brainstorming', endpoint: modelOption.ideasApiPath,
           body: { theorem, assumptions, literatureBrief, knowledgeReferences: compactKnowledgeRefs(rankedKnowledgeReferences), model: modelOption.id },
           fallbackError: 'Idea generation failed.', maxRetries: 1, retryOnHttp: true,
-          requestTimeoutMs: modelOption.provider === 'deepseek' ? 70000 : 50000,
+          requestTimeoutMs: API_TIMEOUTS_MS.ideas[modelOption.provider],
         });
         setPossibleIdeas(Array.isArray(ideasData.ideas) ? ideasData.ideas : []);
         setCandidateTheorems(Array.isArray(ideasData.candidateTheorems) ? ideasData.candidateTheorems : []);
@@ -517,7 +537,7 @@ export default function App() {
           stage: 'candidate proof generation', endpoint: modelOption.apiPath,
           body: { theorem, assumptions, literatureBrief, knowledgeReferences: compactKnowledgeRefs(rankedKnowledgeReferences), model: modelOption.id },
           fallbackError: 'Failed to generate proof.', maxRetries: 1, retryOnHttp: true,
-          requestTimeoutMs: modelOption.provider === 'deepseek' ? 90000 : 70000,
+          requestTimeoutMs: API_TIMEOUTS_MS.proof[modelOption.provider],
         });
         const c = typeof d.proof === 'string' ? d.proof.trim() : '';
         if (!c) throw new Error('Generator returned an empty proof.');
@@ -527,12 +547,14 @@ export default function App() {
         stage: 'proof verification', endpoint: verifyApiPath,
         body: { theorem, assumptions, proof: cp, model: modelOption.id },
         fallbackError: 'Proof verification failed.', maxRetries: 1, retryOnHttp: true,
+        requestTimeoutMs: API_TIMEOUTS_MS.verification[modelOption.provider],
       });
       const reviseProof = async (cp: string, fb: string) => {
         const d = await requestJsonWithRetry<ReviseProofResponse>({
           stage: 'proof revision', endpoint: reviseApiPath,
           body: { theorem, assumptions, proof: cp, feedback: fb, model: modelOption.id },
           fallbackError: 'Proof revision failed.', maxRetries: 1, retryOnHttp: true,
+          requestTimeoutMs: API_TIMEOUTS_MS.revision[modelOption.provider],
         });
         return d.revisedProof || cp;
       };

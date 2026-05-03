@@ -4,6 +4,8 @@ const defaultModel = 'deepseek-v4-pro';
 const allowedModels = new Set(['deepseek-v4-pro', 'deepseek-v4-flash']);
 
 type AttemptStatus = 'ok' | 'empty' | 'error';
+const PROOF_FULL_PROMPT_TIMEOUT_MS = 180000;
+const PROOF_COMPACT_PROMPT_TIMEOUT_MS = 85000;
 
 interface AttemptReport {
   model: string;
@@ -99,6 +101,8 @@ export default async function handler(req: any, res: any) {
           model,
           messages: [{ role: 'user', content: promptCandidate.content }],
           temperature: 0.2,
+          requestTimeoutMs: promptCandidate.type === 'full' ? PROOF_FULL_PROMPT_TIMEOUT_MS : PROOF_COMPACT_PROMPT_TIMEOUT_MS,
+          maxRetries: 0,
         });
 
         const proof = extractProofContent(data);
