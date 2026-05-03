@@ -47,6 +47,27 @@ interface GenerateProofResponse {
   proof: string;
 }
 
+interface ProofTraceStep {
+  title: string;
+  detail: string;
+  status: 'pending' | 'running' | 'success' | 'warning' | 'error';
+}
+
+interface PdfIngestSummary {
+  id: string;
+  fileName: string;
+  title: string;
+  sizeLabel: string;
+  keywordPreview: string[];
+  topicPreview: string[];
+  beforePapers: number;
+  beforeEntries: number;
+  addedPapers: number;
+  addedEntries: number;
+  status: 'processing' | 'success' | 'error';
+  error?: string;
+}
+
 interface ApiAttemptReport {
   model?: string;
   promptType?: 'full' | 'compact';
@@ -216,7 +237,10 @@ export default function App() {
 
   const [knowledgeBase, setKnowledgeBase] = useState<KnowledgeBase>(() => createEmptyKnowledgeBase());
   const [isIngestingPaper, setIsIngestingPaper] = useState(false);
+  const [latestPdfIngest, setLatestPdfIngest] = useState<PdfIngestSummary | null>(null);
+  const [kbUploadDelta, setKbUploadDelta] = useState({ beforePapers: 0, beforeEntries: 0, addedPapers: 0, addedEntries: 0 });
   const [showLogs, setShowLogs] = useState(false);
+  const [proofTrace, setProofTrace] = useState<ProofTraceStep[]>([]);
 
   const logEndRef = useRef<HTMLDivElement>(null);
   const proofRef = useRef<HTMLDivElement>(null);
@@ -244,6 +268,23 @@ export default function App() {
     const now = new Date();
     const timestamp = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
     setLogs((prev) => [...prev, { timestamp, message, type }]);
+  }, []);
+
+  const formatBytes = (bytes: number) => {
+    if (bytes < 1024) return `${bytes} B`;
+    const kb = bytes / 1024;
+    if (kb < 1024) return `${kb.toFixed(1)} KB`;
+    return `${(kb / 1024).toFixed(1)} MB`;
+  };
+
+  const updateTraceStep = useCallback((title: string, detail: string, status: ProofTraceStep['status']) => {
+    setProofTrace((prev) => {
+      const existingIndex = prev.findIndex((step) => step.title === title);
+      if (existingIndex >= 0) {
+        return prev.map((step, index) => index === existingIndex ? { title, detail, status } : step);
+      }
+      return [...prev, { title, detail, status }];
+    });
   }, []);
 
   useEffect(() => { logEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [logs]);
@@ -360,7 +401,6 @@ export default function App() {
             proofSummary: `Reference from ${match.source}. Score: ${match.score.toFixed(2)}.`,
             keywords: match.tags,
             topics: [`${paperId}_topic_1`],
-            importance: match.score,
             citations: [{
               paperId,
               paperTitle: match.title,
@@ -387,9 +427,29 @@ export default function App() {
   const handlePaperUpload = async (files: FileList | null) => {
     if (!files || files.length === 0) return;
     setIsIngestingPaper(true);
+    const beforeCounts = { beforePapers: knowledgeBase.papers.length, beforeEntries: knowledgeBase.entries.length };
+    let currentPapers = beforeCounts.beforePapers;
+    let currentEntries = beforeCounts.beforeEntries;
+    let totalAddedPapers = 0;
+    let totalAddedEntries = 0;
+    setKbUploadDelta({ ...beforeCounts, addedPapers: 0, addedEntries: 0 });
     try {
       const fileList = Array.from(files).filter((file) => file.name.toLowerCase().endsWith('.pdf'));
       for (const file of fileList) {
+        const pendingId = `${file.name}_${file.lastModified}_${Date.now()}`;
+        setLatestPdfIngest({
+          id: pendingId,
+          fileName: file.name,
+          title: file.name.replace(/\.pdf$/i, ''),
+          sizeLabel: formatBytes(file.size),
+          keywordPreview: [],
+          topicPreview: [],
+          beforePapers: currentPapers,
+          beforeEntries: currentEntries,
+          addedPapers: 0,
+          addedEntries: 0,
+          status: 'processing',
+        });
         const buffer = await file.arrayBuffer();
         const bytes = new Uint8Array(buffer);
         let binary = '';
@@ -403,9 +463,33 @@ export default function App() {
         if (!response.ok) throw new Error(`Ingest failed for ${file.name}`);
         const payload = await response.json();
         setKnowledgeBase((prev) => mergePaperIntoKnowledgeBase(prev, payload));
+        const nextPapers = currentPapers + (payload?.paper ? 1 : 0);
+        const nextEntries = currentEntries + (Array.isArray(payload?.entries) ? payload.entries.length : 0);
+        const addedPapers = nextPapers - currentPapers;
+        const addedEntries = nextEntries - currentEntries;
+        totalAddedPapers += addedPapers;
+        totalAddedEntries += addedEntries;
+        setKbUploadDelta({ ...beforeCounts, addedPapers: totalAddedPapers, addedEntries: totalAddedEntries });
+        setLatestPdfIngest({
+          id: pendingId,
+          fileName: file.name,
+          title: typeof payload?.paper?.title === 'string' && payload.paper.title.trim() ? payload.paper.title : file.name.replace(/\.pdf$/i, ''),
+          sizeLabel: formatBytes(file.size),
+          keywordPreview: Array.isArray(payload?.paper?.keywords) ? payload.paper.keywords.slice(0, 4) : [],
+          topicPreview: Array.isArray(payload?.paper?.topics) ? payload.paper.topics.map((t: any) => t.name).filter(Boolean).slice(0, 3) : [],
+          beforePapers: currentPapers,
+          beforeEntries: currentEntries,
+          addedPapers,
+          addedEntries,
+          status: 'success',
+        });
+        currentPapers = nextPapers;
+        currentEntries = nextEntries;
         addLog(`Knowledge base updated from ${file.name}.`, 'success');
       }
     } catch (error) {
+      const message = error instanceof Error ? error.message : 'unknown error';
+      setLatestPdfIngest((prev) => prev ? { ...prev, status: 'error', error: message } : prev);
       addLog(`Paper ingestion failed: ${error instanceof Error ? error.message : 'unknown error'}`, 'error');
     } finally {
       setIsIngestingPaper(false);
@@ -445,11 +529,13 @@ export default function App() {
     const modelOption = resolveModelOption(selectedModelId);
     setIsGenerating(true);
     setProof(null);
+    setProofTrace([]);
     setErrorMessage(null);
     setPossibleIdeas([]);
     setCandidateTheorems([]);
     setProgress(0);
     addLog(`Pipeline started with ${modelOption.label}.`, 'info');
+    updateTraceStep('Input parsed', `Theorem length ${theorem.trim().length}; assumptions length ${assumptions.trim().length}.`, 'success');
 
     const verifyApiPath = modelOption.provider === 'gemini' ? '/api/verify-proof' : '/api/verify-proof-deepseek';
     const reviseApiPath = modelOption.provider === 'gemini' ? '/api/revise-proof' : '/api/revise-proof-deepseek';
@@ -529,8 +615,16 @@ export default function App() {
         });
         setPossibleIdeas(Array.isArray(ideasData.ideas) ? ideasData.ideas : []);
         setCandidateTheorems(Array.isArray(ideasData.candidateTheorems) ? ideasData.candidateTheorems : []);
+        updateTraceStep(
+          'Ideas generated',
+          `${Array.isArray(ideasData.ideas) ? ideasData.ideas.length : 0} proof idea(s), ${Array.isArray(ideasData.candidateTheorems) ? ideasData.candidateTheorems.length : 0} candidate theorem(s).`,
+          'success',
+        );
         addLog('Brainstormed proof ideas and candidate theorems.', 'success');
-      } catch { addLog('Idea generation failed, continuing.', 'warning'); }
+      } catch {
+        updateTraceStep('Ideas generated', 'Idea generation failed; pipeline continued with theorem, assumptions, literature, and KB references.', 'warning');
+        addLog('Idea generation failed, continuing.', 'warning');
+      }
 
       const fetchProof = async () => {
         const d = await requestJsonWithRetry<GenerateProofResponse>({
@@ -567,29 +661,36 @@ export default function App() {
       for (let rr = 0; rr <= maxRegenerateRounds && !completed; rr += 1) {
         setProgress(2);
         addLog(`Generator pass ${rr + 1}: drafting candidate proof...`, 'info');
+        updateTraceStep('Candidate proof drafted', `Generator pass ${rr + 1} is producing a MathJax-ready proof.`, 'running');
         let candidateProof = await fetchProof();
         bestProof = candidateProof;
+        updateTraceStep('Candidate proof drafted', `Generator pass ${rr + 1} returned ${candidateProof.length} characters.`, 'success');
 
         for (let mf = 0; mf <= maxMinorFixRounds; mf += 1) {
           setProgress(3);
           addLog(`Verifier review ${mf + 1}: checking logical soundness.`, 'info');
+          updateTraceStep('Verifier review', `Review ${mf + 1}: checking the candidate proof for logical gaps.`, 'running');
           const vd = await verifyProof(candidateProof);
           if (vd.decision === 'PASS') {
             setProgress(5); completed = true;
             finalProof = appendRiskSummary(candidateProof, riskNotes);
+            updateTraceStep('Verifier review', `Accepted proof. Risk level: ${vd.riskLevel || 'not reported'}.`, 'success');
             addLog('Verifier accepted proof. Pipeline completed.', 'success');
             break;
           }
           if (vd.decision === 'MINOR_FIX') {
             if (mf >= maxMinorFixRounds) { riskNotes.push(`Minor-fix budget reached. ${vd.feedback}`); addLog('Minor-fix limit reached.', 'warning'); break; }
             setProgress(4);
+            updateTraceStep('Revision requested', vd.feedback || 'Verifier requested a minor revision.', 'warning');
             addLog(`Verifier requested revision: ${vd.feedback}`, 'warning');
             candidateProof = await reviseProof(candidateProof, vd.feedback);
             bestProof = candidateProof;
+            updateTraceStep('Revision applied', `Reviser patch ${mf + 1} returned ${candidateProof.length} characters.`, 'success');
             addLog(`Reviser completed patch ${mf + 1}.`, 'success');
             continue;
           }
           riskNotes.push(`Critical flaw: ${vd.feedback}`);
+          updateTraceStep('Verifier review', vd.feedback || 'Verifier found a critical flaw.', 'error');
           addLog(`Verifier: critically flawed: ${vd.feedback}`, 'error');
           break;
         }
@@ -599,8 +700,11 @@ export default function App() {
         finalProof = appendRiskSummary(bestProof || 'No reliable proof could be generated.', [
           ...riskNotes, 'Reached iteration limits. Best available draft requires manual verification.',
         ]);
+        updateTraceStep('Final result', 'Iteration limits reached; returning the best available draft with risk notes.', 'warning');
         addLog('Pipeline stopped at limits. Returned best draft.', 'warning');
         setProgress(5);
+      } else {
+        updateTraceStep('Final result', 'Verified proof is ready for review.', 'success');
       }
 
       setProof(finalProof);
@@ -608,6 +712,7 @@ export default function App() {
     } catch (error: unknown) {
       console.error(error);
       const rawError = error instanceof Error ? error.message : 'Unknown server error.';
+      updateTraceStep('Pipeline error', rawError, 'error');
       setErrorMessage(buildPipelineErrorMessage(pipelineStage, rawError));
       addLog(`Pipeline error at ${pipelineStage}: ${rawError}`, 'error');
     } finally {
@@ -621,11 +726,13 @@ export default function App() {
     const modelOption = resolveModelOption(selectedModelId);
     setIsGenerating(true);
     setProof(null);
+    setProofTrace([]);
     setErrorMessage(null);
     setPossibleIdeas([]);
     setCandidateTheorems([]);
     setProgress(0);
     addLog(`KB Generate started with ${modelOption.label}.`, 'info');
+    updateTraceStep('Input parsed', `Using ${rankedKnowledgeReferences.length} ranked KB reference(s) for this theorem.`, 'success');
 
     const literatureBrief = buildLiteratureBrief(allSelectedMatches);
 
@@ -641,9 +748,13 @@ export default function App() {
           const data = await response.json();
           setPossibleIdeas(Array.isArray(data.ideas) ? data.ideas : []);
           setCandidateTheorems(Array.isArray(data.candidateTheorems) ? data.candidateTheorems : []);
+          updateTraceStep('KB ideas generated', `${Array.isArray(data.ideas) ? data.ideas.length : 0} idea(s) returned from KB context.`, 'success');
           addLog('KB brainstormed proof ideas.', 'success');
         }
-      } catch { addLog('KB idea generation failed.', 'warning'); }
+      } catch {
+        updateTraceStep('KB ideas generated', 'KB idea generation failed; proof generation continued with ranked references.', 'warning');
+        addLog('KB idea generation failed.', 'warning');
+      }
 
       setProgress(2);
       const response = await fetch(modelOption.apiPath, {
@@ -659,6 +770,8 @@ export default function App() {
       const proofText = typeof data.proof === 'string' ? data.proof.trim() : '';
       if (proofText) {
         setProof(proofText);
+        updateTraceStep('KB proof drafted', `Generator returned ${proofText.length} characters from ranked KB context.`, 'success');
+        updateTraceStep('Final result', 'KB proof is ready for review.', 'success');
         addLog(`KB proof generated via ${modelOption.label}.`, 'success');
       } else {
         throw new Error('KB generator returned empty proof.');
@@ -667,6 +780,7 @@ export default function App() {
     } catch (error: unknown) {
       console.error(error);
       const rawError = error instanceof Error ? error.message : 'Unknown error.';
+      updateTraceStep('KB Generate error', rawError, 'error');
       setErrorMessage(rawError);
       addLog(`KB Generate error: ${rawError}`, 'error');
     } finally {
@@ -792,9 +906,10 @@ export default function App() {
               <h2 className="font-bold text-slate-900 flex items-center gap-2 text-sm">
                 <Database size={16} className="text-[#064e3b]" /> Knowledge Base
               </h2>
-              <span className="text-[10px] px-2 py-0.5 bg-emerald-50 text-emerald-700 rounded-full font-bold border border-emerald-100">
-                {knowledgeBase.papers.length} PAPERS / {knowledgeBase.entries.length} ENTRIES
-              </span>
+              <div className="text-[10px] px-2 py-1 bg-emerald-50 text-emerald-700 rounded-lg font-bold border border-emerald-100 text-right leading-tight">
+                <div>Total {knowledgeBase.papers.length} papers / {knowledgeBase.entries.length} entries</div>
+                <div>Original {kbUploadDelta.beforePapers} / {kbUploadDelta.beforeEntries} · Added +{kbUploadDelta.addedPapers} / +{kbUploadDelta.addedEntries}</div>
+              </div>
             </div>
             <div className="grid grid-cols-3 gap-2 mb-3">
               <label className="flex items-center justify-center gap-1.5 text-[11px] font-bold border border-slate-200 rounded-lg px-2 py-1.5 cursor-pointer hover:border-[#064e3b]/40 transition-colors">
@@ -809,6 +924,33 @@ export default function App() {
                 <Download size={12} /> Export
               </button>
             </div>
+            {latestPdfIngest && (
+              <div className={`mb-3 rounded-lg border px-3 py-2.5 ${latestPdfIngest.status === 'success' ? 'border-emerald-200 bg-emerald-50/60' : latestPdfIngest.status === 'error' ? 'border-rose-200 bg-rose-50' : 'border-slate-200 bg-slate-50'}`}>
+                <div className="flex items-start gap-2">
+                  <div className="mt-0.5">
+                    {latestPdfIngest.status === 'success' ? <CheckCircle2 size={16} className="text-emerald-600" /> : latestPdfIngest.status === 'error' ? <Terminal size={16} className="text-rose-500" /> : <RefreshCw size={16} className="text-slate-400 animate-spin" />}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-[11px] font-bold text-slate-800 truncate">{latestPdfIngest.title}</p>
+                      <span className="text-[9px] font-bold uppercase text-slate-400">{latestPdfIngest.sizeLabel}</span>
+                    </div>
+                    <p className="text-[10px] text-slate-500 truncate">File: {latestPdfIngest.fileName}</p>
+                    <div className="mt-1 text-[10px] text-slate-500">
+                      Original {latestPdfIngest.beforePapers} papers / {latestPdfIngest.beforeEntries} entries · Added +{latestPdfIngest.addedPapers} papers / +{latestPdfIngest.addedEntries} entries
+                    </div>
+                    {latestPdfIngest.status === 'success' && (
+                      <div className="mt-1 flex flex-wrap gap-1">
+                        {[...latestPdfIngest.keywordPreview, ...latestPdfIngest.topicPreview].slice(0, 5).map((item) => (
+                          <span key={item} className="rounded bg-white/70 px-1.5 py-0.5 text-[9px] font-bold uppercase text-emerald-700 border border-emerald-100">{item}</span>
+                        ))}
+                      </div>
+                    )}
+                    {latestPdfIngest.status === 'error' && <p className="mt-1 text-[10px] text-rose-600">{latestPdfIngest.error}</p>}
+                  </div>
+                </div>
+              </div>
+            )}
             <button onClick={handleKbGenerate} disabled={isGenerating}
               className={`flex items-center justify-center gap-1.5 text-[11px] font-bold rounded-lg px-3 py-2 mb-3 w-full transition-all ${isGenerating ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-[#064e3b] text-white hover:bg-[#065f46]'}`}>
               {isGenerating ? <RefreshCw size={12} className="animate-spin" /> : <Database size={12} />}
@@ -964,6 +1106,30 @@ export default function App() {
               <button className="flex items-center gap-1.5 text-xs font-bold text-slate-500 hover:text-[#064e3b] transition-colors px-3 py-1.5"><Copy size={14} /> Copy LaTeX</button>
               <button className="flex items-center gap-1.5 text-xs font-bold text-slate-500 hover:text-[#064e3b] transition-colors px-3 py-1.5"><Download size={14} /> Export PDF</button>
             </div>
+          </section>
+
+          {/* Proof Trace */}
+          <section className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
+            <h2 className="font-bold text-sm text-slate-900 mb-3 flex items-center gap-2">
+              <CheckCircle2 size={16} className="text-[#064e3b]" /> Proof Process
+            </h2>
+            {proofTrace.length === 0 ? (
+              <p className="text-sm text-slate-400">Generate a proof to see the auditable process summary.</p>
+            ) : (
+              <ol className="space-y-2">
+                {proofTrace.map((step, index) => (
+                  <li key={step.title} className="flex gap-2">
+                    <span className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-bold ${step.status === 'success' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : step.status === 'warning' ? 'bg-amber-50 text-amber-700 border border-amber-200' : step.status === 'error' ? 'bg-rose-50 text-rose-700 border border-rose-200' : 'bg-slate-50 text-slate-500 border border-slate-200'}`}>
+                      {step.status === 'success' ? <Check size={12} /> : index + 1}
+                    </span>
+                    <div>
+                      <div className="text-xs font-bold text-slate-800">{step.title}</div>
+                      <div className="text-[11px] text-slate-500 leading-relaxed">{step.detail}</div>
+                    </div>
+                  </li>
+                ))}
+              </ol>
+            )}
           </section>
 
           {/* Ideas */}
