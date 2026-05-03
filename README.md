@@ -41,7 +41,7 @@ flowchart LR
 
 ### 知识库（Knowledge Base）
 
-用户可上传 PDF 论文，系统通过 Gemini 自动提取：
+用户可上传 PDF 论文，系统通过 DeepSeek 自动提取：
 
 | 字段 | 说明 |
 |------|------|
@@ -69,13 +69,12 @@ flowchart LR
 
 ### 多模型支持
 
-右上角统一选择模型，所有功能（证明生成、KB Generate、思路生成等）共享同一个模型设置。
+右上角选择 Proof Model；Knowledge Base 面板内单独选择 Knowledge Base Model，PDF 上传和 KB Generate 使用知识库模型。
 
 | 模型 | 说明 |
 |------|------|
 | DeepSeek V4 Pro | DeepSeek 最新旗舰，推理能力最强（默认） |
 | DeepSeek V4 Flash | DeepSeek 最新轻量版，速度快成本低 |
-| Gemini 2.5 Flash | Google，速度快，多模态支持 |
 
 ---
 
@@ -85,7 +84,7 @@ flowchart LR
 |------|------|
 | 前端 | React 19 + Vite + TypeScript + Tailwind CSS v4 |
 | 后端 | Express + tsx（`server.ts` 挂载 `/api/*.ts` 路由） |
-| AI 模型 | Google Gemini（`@google/genai`）+ DeepSeek（REST API） |
+| AI 模型 | DeepSeek（REST API） |
 | 文献检索 | arXiv API + Crossref API |
 | 公式渲染 | MathJax CDN |
 
@@ -93,13 +92,13 @@ flowchart LR
 
 | 路由 | 说明 |
 |------|------|
-| `POST /api/generate-ideas` | Gemini 思路生成 |
+| `POST /api/generate-ideas` | DeepSeek 思路生成（兼容旧路由） |
 | `POST /api/generate-ideas-deepseek` | DeepSeek 思路生成 |
-| `POST /api/generate-proof` | Gemini 证明生成 |
+| `POST /api/generate-proof` | DeepSeek 证明生成（兼容旧路由） |
 | `POST /api/generate-proof-deepseek` | DeepSeek 证明生成 |
-| `POST /api/verify-proof` | Gemini 证明校验 |
+| `POST /api/verify-proof` | DeepSeek 证明校验（兼容旧路由） |
 | `POST /api/verify-proof-deepseek` | DeepSeek 证明校验 |
-| `POST /api/revise-proof` | Gemini 小修订 |
+| `POST /api/revise-proof` | DeepSeek 小修订（兼容旧路由） |
 | `POST /api/revise-proof-deepseek` | DeepSeek 小修订 |
 | `POST /api/literature-search` | 文献检索（arXiv + Crossref） |
 | `POST /api/ingest-paper` | PDF 论文知识提取 |
@@ -113,9 +112,8 @@ flowchart LR
 ### 前置要求
 
 - **Node.js 18+**（推荐 22 LTS）：[下载地址](https://nodejs.org/)
-- **API Key**（至少需要一个）：
+- **API Key**：
   - DeepSeek API Key：[申请地址](https://platform.deepseek.com/api_keys)
-  - Gemini API Key：[申请地址](https://aistudio.google.com/apikey)
 
 ### 第 1 步：克隆项目
 
@@ -142,18 +140,12 @@ cp .env.example .env.local
 然后编辑 `.env.local`，填入你的 API Key：
 
 ```env
-# 必填（至少配一个）
-GEMINI_API_KEY=your_gemini_api_key_here
+# 必填
 DEEPSEEK_API_KEY=your_deepseek_api_key_here
 
 # 可选：DeepSeek 单次请求超时（毫秒），默认 90000（90 秒）
 # DEEPSEEK_REQUEST_TIMEOUT_MS=90000
 ```
-
-> **说明**：
-> - 如果只用 DeepSeek V4 Pro / V4 Flash，只需配 `DEEPSEEK_API_KEY`
-> - 如果只用 Gemini 2.5 Flash，只需配 `GEMINI_API_KEY`
-> - 两个都配，界面上可自由切换模型
 
 ### 第 4 步：启动
 
@@ -274,13 +266,13 @@ docker run -d -p 3001:3001 --env-file .env.local proof-assistant
 ```text
 .
 ├─ api/
-│  ├─ generate-ideas.ts           # Gemini 思路生成
+│  ├─ generate-ideas.ts           # DeepSeek 思路生成（兼容旧路由）
 │  ├─ generate-ideas-deepseek.ts  # DeepSeek 思路生成
-│  ├─ generate-proof.ts           # Gemini 证明生成
+│  ├─ generate-proof.ts           # DeepSeek 证明生成（兼容旧路由）
 │  ├─ generate-proof-deepseek.ts  # DeepSeek 证明生成
-│  ├─ verify-proof.ts             # Gemini 证明校验
+│  ├─ verify-proof.ts             # DeepSeek 证明校验（兼容旧路由）
 │  ├─ verify-proof-deepseek.ts    # DeepSeek 证明校验
-│  ├─ revise-proof.ts             # Gemini 小修订
+│  ├─ revise-proof.ts             # DeepSeek 小修订（兼容旧路由）
 │  ├─ revise-proof-deepseek.ts    # DeepSeek 小修订
 │  ├─ literature-search.ts        # 文献检索
 │  └─ ingest-paper.ts             # PDF 知识提取

@@ -105,25 +105,21 @@ interface CandidateTheorem {
   why: string;
 }
 
-type ModelProvider = 'gemini' | 'deepseek';
+type ModelProvider = 'deepseek';
 
 const API_TIMEOUTS_MS = {
   default: 80000,
   ideas: {
     deepseek: 120000,
-    gemini: 70000,
   },
   proof: {
     deepseek: 285000,
-    gemini: 120000,
   },
   verification: {
     deepseek: 120000,
-    gemini: 80000,
   },
   revision: {
     deepseek: 120000,
-    gemini: 80000,
   },
 };
 
@@ -138,7 +134,6 @@ interface ModelOption {
 const MODEL_OPTIONS: ModelOption[] = [
   { id: 'deepseek-v4-pro', label: 'DeepSeek V4 Pro', provider: 'deepseek', apiPath: '/api/generate-proof-deepseek', ideasApiPath: '/api/generate-ideas-deepseek' },
   { id: 'deepseek-v4-flash', label: 'DeepSeek V4 Flash', provider: 'deepseek', apiPath: '/api/generate-proof-deepseek', ideasApiPath: '/api/generate-ideas-deepseek' },
-  { id: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash', provider: 'gemini', apiPath: '/api/generate-proof', ideasApiPath: '/api/generate-ideas' },
 ];
 
 declare global {
@@ -223,7 +218,8 @@ export default function App() {
   const [proof, setProof] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'formatted' | 'source'>('formatted');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [selectedModelId, setSelectedModelId] = useState('deepseek-v4-pro');
+  const [proofModelId, setProofModelId] = useState('deepseek-v4-pro');
+  const [kbModelId, setKbModelId] = useState('deepseek-v4-pro');
   const [possibleIdeas, setPossibleIdeas] = useState<string[]>([]);
   const [candidateTheorems, setCandidateTheorems] = useState<CandidateTheorem[]>([]);
 
@@ -248,6 +244,9 @@ export default function App() {
 
   const resolveModelOption = (modelId: string) =>
     MODEL_OPTIONS.find((option) => option.id === modelId) || MODEL_OPTIONS[0];
+
+  const proofModelOption = resolveModelOption(proofModelId);
+  const kbModelOption = resolveModelOption(kbModelId);
 
   const allSelectedMatches = useMemo(() => {
     const byKey = new Map<string, LiteratureMatch>();
@@ -458,7 +457,7 @@ export default function App() {
         const response = await fetch('/api/ingest-paper', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ fileName: file.name, fileDataBase64 }),
+          body: JSON.stringify({ fileName: file.name, fileDataBase64, model: kbModelId }),
         });
         if (!response.ok) throw new Error(`Ingest failed for ${file.name}`);
         const payload = await response.json();
@@ -526,7 +525,7 @@ export default function App() {
   const handleGenerate = async () => {
     if (isGenerating) return;
 
-    const modelOption = resolveModelOption(selectedModelId);
+    const modelOption = resolveModelOption(proofModelId);
     setIsGenerating(true);
     setProof(null);
     setProofTrace([]);
@@ -537,8 +536,8 @@ export default function App() {
     addLog(`Pipeline started with ${modelOption.label}.`, 'info');
     updateTraceStep('Input parsed', `Theorem length ${theorem.trim().length}; assumptions length ${assumptions.trim().length}.`, 'success');
 
-    const verifyApiPath = modelOption.provider === 'gemini' ? '/api/verify-proof' : '/api/verify-proof-deepseek';
-    const reviseApiPath = modelOption.provider === 'gemini' ? '/api/revise-proof' : '/api/revise-proof-deepseek';
+    const verifyApiPath = '/api/verify-proof-deepseek';
+    const reviseApiPath = '/api/revise-proof-deepseek';
     const maxMinorFixRounds = 3;
     const maxRegenerateRounds = 2;
     let pipelineStage = 'initialization';
@@ -720,10 +719,10 @@ export default function App() {
     }
   };
 
-  // KB Generate: independent, uses the global model selection
+  // KB Generate: independent from the standard proof model selection.
   const handleKbGenerate = async () => {
     if (isGenerating) return;
-    const modelOption = resolveModelOption(selectedModelId);
+    const modelOption = resolveModelOption(kbModelId);
     setIsGenerating(true);
     setProof(null);
     setProofTrace([]);
@@ -816,14 +815,17 @@ export default function App() {
             <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
             <span className="text-[10px] font-bold text-emerald-700 uppercase">Ready</span>
           </div>
-          <select value={selectedModelId} onChange={(e) => setSelectedModelId(e.target.value)}
-            className="text-sm font-semibold text-slate-700 bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5" disabled={isGenerating}>
-            {MODEL_OPTIONS.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
-          </select>
+          <div className="flex flex-col gap-0.5">
+            <span className="text-[9px] font-bold uppercase tracking-wider text-slate-400">Proof Model</span>
+            <select value={proofModelId} onChange={(e) => setProofModelId(e.target.value)}
+              className="text-sm font-semibold text-slate-700 bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5" disabled={isGenerating}>
+              {MODEL_OPTIONS.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
+            </select>
+          </div>
           <button onClick={handleGenerate} disabled={isGenerating}
             className={`flex items-center gap-2 px-5 py-2 rounded-lg font-bold text-sm transition-all shadow-sm ${isGenerating ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-[#064e3b] text-white hover:bg-[#065f46] active:scale-[0.97]'}`}>
             {isGenerating ? <RefreshCw size={16} className="animate-spin" /> : <Play size={16} fill="currentColor" />}
-            {isGenerating ? 'Generating...' : 'Generate Proof'}
+            {isGenerating ? 'Generating...' : `Generate Proof · ${proofModelOption.label}`}
           </button>
         </div>
       </header>
@@ -911,6 +913,13 @@ export default function App() {
                 <div>Original {kbUploadDelta.beforePapers} / {kbUploadDelta.beforeEntries} · Added +{kbUploadDelta.addedPapers} / +{kbUploadDelta.addedEntries}</div>
               </div>
             </div>
+            <div className="mb-3">
+              <label className="mb-1 block text-[9px] font-bold uppercase tracking-widest text-slate-400">Knowledge Base Model</label>
+              <select value={kbModelId} onChange={(e) => setKbModelId(e.target.value)}
+                className="w-full text-[11px] font-semibold text-slate-700 bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5" disabled={isGenerating || isIngestingPaper}>
+                {MODEL_OPTIONS.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
+              </select>
+            </div>
             <div className="grid grid-cols-3 gap-2 mb-3">
               <label className="flex items-center justify-center gap-1.5 text-[11px] font-bold border border-slate-200 rounded-lg px-2 py-1.5 cursor-pointer hover:border-[#064e3b]/40 transition-colors">
                 <Upload size={12} /> {isIngestingPaper ? 'Processing...' : 'Upload PDF'}
@@ -954,7 +963,7 @@ export default function App() {
             <button onClick={handleKbGenerate} disabled={isGenerating}
               className={`flex items-center justify-center gap-1.5 text-[11px] font-bold rounded-lg px-3 py-2 mb-3 w-full transition-all ${isGenerating ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-[#064e3b] text-white hover:bg-[#065f46]'}`}>
               {isGenerating ? <RefreshCw size={12} className="animate-spin" /> : <Database size={12} />}
-              Generate (KB)
+              Generate (KB) · {kbModelOption.label}
             </button>
             <div className="max-h-36 overflow-y-auto space-y-1.5 pr-1">
               {rankedKnowledgeReferences.slice(0, 5).map((ref) => (
